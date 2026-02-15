@@ -210,8 +210,10 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             
             if action == "device_name":
                 return await self.async_step_device_name()
-            elif action == "configure_all":
-                return await self.async_step_configure_all()
+            elif action == "configure_inputs":
+                return await self.async_step_configure_inputs()
+            elif action == "configure_outputs":
+                return await self.async_step_configure_outputs()
             elif action == "done":
                 return self.async_create_entry(title="", data={})
 
@@ -229,12 +231,68 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required("action"): vol.In({
                         "device_name": "Set Controller Name",
-                        "configure_all": "Configure All Inputs & Outputs",
+                        "configure_inputs": "Configure Inputs (16)",
+                        "configure_outputs": "Configure Outputs (16)",
                         "done": "Done",
                     }),
                 }
             ),
             description_placeholders={"status": description},
+        )
+
+    async def async_step_configure_inputs(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure inputs screen - show all 16 inputs."""
+        if user_input is not None:
+            input_num = user_input["input"]
+            self._pin_to_configure = input_num
+            self._is_input = True
+            return await self.async_step_edit_pin()
+
+        # Build list of all 16 inputs
+        input_options = {}
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") == "binary_sensor"), None)
+            if pin_config:
+                input_options[i] = f"Input {i+1}: {pin_config.get('name', 'Unnamed')} [✓]"
+            else:
+                input_options[i] = f"Input {i+1}: Not configured"
+
+        return self.async_show_form(
+            step_id="configure_inputs",
+            data_schema=vol.Schema({
+                vol.Required("input"): vol.In(input_options),
+            }),
+            description_placeholders={"info": "Select an input to configure"},
+        )
+
+    async def async_step_configure_outputs(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure outputs screen - show all 16 outputs."""
+        if user_input is not None:
+            output_num = user_input["output"]
+            self._pin_to_configure = output_num
+            self._is_input = False
+            return await self.async_step_edit_pin()
+
+        # Build list of all 16 outputs
+        output_options = {}
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") in ["light", "switch", "cover"]), None)
+            if pin_config:
+                pin_type = pin_config.get("type", "").capitalize()
+                output_options[i] = f"Output {i+1}: {pin_config.get('name', 'Unnamed')} ({pin_type}) [✓]"
+            else:
+                output_options[i] = f"Output {i+1}: Not configured"
+
+        return self.async_show_form(
+            step_id="configure_outputs",
+            data_schema=vol.Schema({
+                vol.Required("output"): vol.In(output_options),
+            }),
+            description_placeholders={"info": "Select an output to configure"},
         )
 
     async def async_step_configure_all(
@@ -295,7 +353,10 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             if user_input["type"] == "unconfigured":
                 # TODO: Add API call to remove/unconfigure pin
                 # For now, just return to the list
-                return await self.async_step_configure_all()
+                if is_input:
+                    return await self.async_step_configure_inputs()
+                else:
+                    return await self.async_step_configure_outputs()
 
             config_data = {
                 "pin": pin_num,
@@ -313,12 +374,18 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                         # Refresh pin data before going back
                         await self._fetch_pin_data()
                         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                        return await self.async_step_configure_all()
+                        if is_input:
+                            return await self.async_step_configure_inputs()
+                        else:
+                            return await self.async_step_configure_outputs()
             except Exception as err:
                 _LOGGER.error("Error configuring pin %s: %s", pin_num, err)
             
             # If we get here, there was an error, but continue anyway
-            return await self.async_step_configure_all()
+            if is_input:
+                return await self.async_step_configure_inputs()
+            else:
+                return await self.async_step_configure_outputs()
 
         # Get current configuration
         pin_config = next((p for p in self._all_pins if p.get("pin") == pin_num), None)
