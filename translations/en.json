@@ -1,0 +1,100 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up IoTiX Adam Controller",
+        "description": "Enter the IP address of your Adam controller",
+        "data": {
+          "host": "IP Address",
+          "name": "Name"
+        }
+      },
+      "discovery_confirm": {
+        "title": "Discovered IoTiX Adam",
+        "description": "Do you want to add the Adam controller at {host}?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device",
+      "not_adam_controller": "This is not an IoTiX Adam controller",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "no_mac": "Could not determine device MAC address",
+      "cannot_connect": "Could not connect to the device",
+      "not_adam_controller": "This is not an IoTiX Adam controller"
+    }
+  },
+  "options": {
+    "step": {
+      "pin_list": {
+        "title": "Pin Configuration",
+        "description": "{pin_info}",
+        "data": {
+          "action": "Action"
+        },
+        "data_description": {
+          "action": "Choose to configure a new pin or finish setup"
+        }
+      },
+      "select_pin": {
+        "title": "Select Pin to Configure",
+        "description": "Choose which pin you want to configure",
+        "data": {
+          "pin": "Pin"
+        }
+      },
+      "configure_pin": {
+        "title": "Configure Pin {pin}",
+        "description": "Select the type and name for this pin",
+        "data": {
+          "type": "Type",
+          "name": "Name"
+        },
+        "data_description": {
+          "type": "What kind of device is connected to this pin?",
+          "name": "Give this pin a friendly name"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "default": {
+        "name": "Pin {pin}"
+      }
+    },
+    "light": {
+      "default": {
+        "name": "Pin {pin}"
+      }
+    },
+    "switch": {
+      "default": {
+        "name": "Pin {pin}"
+      }
+    },
+    "cover": {
+      "default": {
+        "name": "Pin {pin}"
+      }
+    }
+  },
+  "selector": {
+    "action": {
+      "options": {
+        "configure_pin": "Configure a pin",
+        "done": "Finish configuration"
+      }
+    },
+    "type": {
+      "options": {
+        "light": "Light",
+        "switch": "Switch",
+        "cover": "Cover",
+        "binary_sensor": "Binary Sensor"
+      }
+    }
+  }
+}

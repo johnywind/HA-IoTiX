@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurare Controller IoTiX Adam",
+        "description": "Introdu adresa IP a controlerului Adam",
+        "data": {
+          "host": "Adresă IP",
+          "name": "Nume"
+        }
+      },
+      "discovery_confirm": {
+        "title": "Controller IoTiX Adam Descoperit",
+        "description": "Vrei să adaugi controllerul Adam de la {host}?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Nu s-a putut conecta la dispozitiv",
+      "not_adam_controller": "Acesta nu este un controller IoTiX Adam",
+      "unknown": "Eroare neașteptată"
+    },
+    "abort": {
+      "already_configured": "Dispozitivul este deja configurat",
+      "no_mac": "Nu s-a putut determina adresa MAC",
+      "cannot_connect": "Nu s-a putut conecta la dispozitiv",
+      "not_adam_controller": "Acesta nu este un controller IoTiX Adam"
+    }
+  },
+  "options": {
+    "step": {
+      "pin_list": {
+        "title": "Configurare Pini",
+        "description": "{pin_info}",
+        "data": {
+          "action": "Acțiune"
+        }
+      },
+      "select_pin": {
+        "title": "Selectează Pinul de Configurat",
+        "data": {
+          "pin": "Pin"
+        }
+      },
+      "configure_pin": {
+        "title": "Configurare Pin {pin}",
+        "description": "Selectează tipul și numele pentru acest pin",
+        "data": {
+          "type": "Tip",
+          "name": "Nume"
+        }
+      }
+    }
+  }
+}
