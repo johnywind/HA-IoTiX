@@ -1,7 +1,7 @@
 # IoTiX
 
 <p align="center">
-  <img src="icon.png" alt="IoTiX Logo" width="200"/>
+  <img src="icon.png" alt="IoTiX Logo" width="512"/>
 </p>
 
 Home Assistant integration for IoTiX Adam (ESP32 + PCF8575).
