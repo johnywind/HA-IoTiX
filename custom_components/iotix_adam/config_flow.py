@@ -159,122 +159,156 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
     def __init__(self) -> None:
         """Initialize options flow."""
         super().__init__()
-        self._available_pins: list[dict] = []
+        self._all_pins: list[dict] = []
+        self._inputs: list[dict] = []
+        self._outputs: list[dict] = []
         self._pin_to_configure: int | None = None
         self._pin_type: str | None = None
         self._device_name: str | None = None
+        self._is_input: bool = False
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage pin configuration."""
-        return await self.async_step_pin_list()
+        """Main configuration screen."""
+        return await self.async_step_main_menu()
 
-    async def async_step_pin_list(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Show list of pins and configuration options."""
-        if user_input is not None:
-            action = user_input.get("action")
-            
-            if action == "configure_pin":
-                return await self.async_step_select_pin()
-            elif action == "set_device_name":
-                return await self.async_step_device_name()
-            elif action == "done":
-                return self.async_create_entry(title="", data={})
-
-        # Get current pin configuration
+    async def _fetch_pin_data(self) -> None:
+        """Fetch pin configuration from device."""
         host = self.config_entry.data[CONF_HOST]
         session = async_get_clientsession(self.hass)
         
         try:
+            # Get device info
             async with session.get(
-                f"http://{host}/api/pins/available",
+                f"http://{host}/api/info",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    info = await resp.json()
+                    self._device_name = info.get("name", "Adam Controller")
+            
+            # Get pin configuration
+            async with session.get(
+                f"http://{host}/api/pins/config",
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    self._available_pins = data.get("pins", [])
+                    self._all_pins = data.get("pins", [])
         except:
             pass
 
-        # Build description of current config
-        configured_pins = [p for p in self._available_pins if p.get("configured")]
-        unconfigured_pins = [p for p in self._available_pins if not p.get("configured")]
+    async def async_step_main_menu(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Show main configuration menu."""
+        await self._fetch_pin_data()
         
-        description = f"Configured pins: {len(configured_pins)}\n"
-        description += f"Available pins: {len(unconfigured_pins)}"
+        if user_input is not None:
+            action = user_input.get("action")
+            
+            if action == "device_name":
+                return await self.async_step_device_name()
+            elif action == "configure_inputs":
+                return await self.async_step_configure_inputs()
+            elif action == "configure_outputs":
+                return await self.async_step_configure_outputs()
+            elif action == "done":
+                return self.async_create_entry(title="", data={})
+
+        # Count configured pins
+        inputs = [p for p in self._all_pins if p.get("type") == "binary_sensor"]
+        outputs = [p for p in self._all_pins if p.get("type") in ["light", "switch", "cover"]]
+        
+        description = f"Controller: {self._device_name}\n"
+        description += f"Configured Inputs: {len(inputs)}/16\n"
+        description += f"Configured Outputs: {len(outputs)}/16"
 
         return self.async_show_form(
-            step_id="pin_list",
+            step_id="main_menu",
             data_schema=vol.Schema(
                 {
                     vol.Required("action"): vol.In({
-                        "configure_pin": "Configure a pin",
-                        "set_device_name": "Set device name",
-                        "done": "Finish configuration",
+                        "device_name": "Set Controller Name",
+                        "configure_inputs": "Configure Inputs (16)",
+                        "configure_outputs": "Configure Outputs (16)",
+                        "done": "Done",
                     }),
                 }
             ),
-            description_placeholders={"pin_info": description},
+            description_placeholders={"status": description},
         )
 
-    async def async_step_select_pin(
+    async def async_step_configure_inputs(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Select which pin to configure."""
+        """Configure inputs screen - show all 16 inputs."""
         if user_input is not None:
-            self._pin_to_configure = user_input["pin"]
-            return await self.async_step_configure_pin_type()
+            input_num = user_input["input"]
+            self._pin_to_configure = input_num
+            self._is_input = True
+            return await self.async_step_edit_pin()
 
-        # Get available pins
-        unconfigured = [p for p in self._available_pins if not p.get("configured")]
+        # Build list of all 16 inputs
+        input_options = {}
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") == "binary_sensor"), None)
+            if pin_config:
+                input_options[i] = f"Input {i+1}: {pin_config.get('name', 'Unnamed')} [✓]"
+            else:
+                input_options[i] = f"Input {i+1}: Not configured"
+
+        return self.async_show_form(
+            step_id="configure_inputs",
+            data_schema=vol.Schema({
+                vol.Required("input"): vol.In(input_options),
+            }),
+            description_placeholders={"info": "Select an input to configure"},
+        )
+
+    async def async_step_configure_outputs(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure outputs screen - show all 16 outputs."""
+        if user_input is not None:
+            output_num = user_input["output"]
+            self._pin_to_configure = output_num
+            self._is_input = False
+            return await self.async_step_edit_pin()
+
+        # Build list of all 16 outputs
+        output_options = {}
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") in ["light", "switch", "cover"]), None)
+            if pin_config:
+                pin_type = pin_config.get("type", "").capitalize()
+                output_options[i] = f"Output {i+1}: {pin_config.get('name', 'Unnamed')} ({pin_type}) [✓]"
+            else:
+                output_options[i] = f"Output {i+1}: Not configured"
+
+        return self.async_show_form(
+            step_id="configure_outputs",
+            data_schema=vol.Schema({
+                vol.Required("output"): vol.In(output_options),
+            }),
+            description_placeholders={"info": "Select an output to configure"},
+        )
+
+    async def async_step_edit_pin(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Edit a specific input or output."""
+        pin_num = self._pin_to_configure
+        is_input = self._is_input
         
-        if not unconfigured:
-            return await self.async_step_pin_list()
-
-        pin_options = {p["pin"]: f"P{p['pin']} ({p['name']})" for p in unconfigured}
-
-        return self.async_show_form(
-            step_id="select_pin",
-            data_schema=vol.Schema({
-                vol.Required("pin"): vol.In(pin_options),
-            }),
-        )
-
-    async def async_step_configure_pin_type(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Select pin type."""
-        if user_input is not None:
-            self._pin_type = user_input["type"]
-            return await self.async_step_configure_pin_name()
-
-        return self.async_show_form(
-            step_id="configure_pin_type",
-            data_schema=vol.Schema({
-                vol.Required("type"): vol.In({
-                    "light": "Light",
-                    "switch": "Switch",
-                    "cover": "Cover",
-                    "binary_sensor": "Binary Sensor",
-                }),
-            }),
-            description_placeholders={"pin": f"P{self._pin_to_configure}"},
-        )
-
-    async def async_step_configure_pin_name(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Configure pin name and send config."""
         if user_input is not None:
             host = self.config_entry.data[CONF_HOST]
             session = async_get_clientsession(self.hass)
 
             config_data = {
-                "pin": self._pin_to_configure,
-                "type": self._pin_type,
+                "pin": pin_num,
+                "type": user_input["type"],
                 "name": user_input["name"],
             }
 
@@ -286,43 +320,66 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 ) as resp:
                     if resp.status == 200:
                         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                        return await self.async_step_pin_list()
+                        if is_input:
+                            return await self.async_step_configure_inputs()
+                        else:
+                            return await self.async_step_configure_outputs()
             except:
                 pass
+            
+            # If we get here, there was an error, but continue anyway
+            if is_input:
+                return await self.async_step_configure_inputs()
+            else:
+                return await self.async_step_configure_outputs()
 
-        default_name = "Output {pin}".format(pin=(self._pin_to_configure or 0) + 1)
-        if self._pin_type == "binary_sensor":
-            default_name = "Input {pin}".format(pin=(self._pin_to_configure or 0) + 1)
+        # Get current configuration
+        pin_config = next((p for p in self._all_pins if p.get("pin") == pin_num), None)
+        current_name = pin_config.get("name", "") if pin_config else ""
+        current_type = pin_config.get("type", "") if pin_config else ""
 
+        # Default names
+        if not current_name:
+            if is_input:
+                current_name = f"Input {pin_num + 1}"
+            else:
+                current_name = f"Output {pin_num + 1}"
+
+        # Type options
+        if is_input:
+            type_options = {
+                "binary_sensor": "Binary Sensor (Input)",
+                "unconfigured": "Not Configured",
+            }
+            if not current_type:
+                current_type = "binary_sensor"
+        else:
+            type_options = {
+                "light": "Light",
+                "switch": "Switch",
+                "cover": "Cover",
+                "unconfigured": "Not Configured",
+            }
+            if not current_type:
+                current_type = "light"
+
+        pin_label = f"Input {pin_num + 1}" if is_input else f"Output {pin_num + 1}"
+        
         return self.async_show_form(
-            step_id="configure_pin_name",
+            step_id="edit_pin",
             data_schema=vol.Schema({
-                vol.Required("name", default=default_name): str,
+                vol.Required("name", default=current_name): str,
+                vol.Required("type", default=current_type): vol.In(type_options),
             }),
-            description_placeholders={
-                "pin": f"P{self._pin_to_configure}",
-                "type": self._pin_type,
-            },
+            description_placeholders={"pin": pin_label},
         )
 
     async def async_step_device_name(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Configure device name."""
+        """Configure controller name."""
         host = self.config_entry.data[CONF_HOST]
         session = async_get_clientsession(self.hass)
-
-        if self._device_name is None:
-            try:
-                async with session.get(
-                    f"http://{host}/api/info",
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    if resp.status == 200:
-                        info = await resp.json()
-                        self._device_name = info.get("name")
-            except:
-                pass
 
         if user_input is not None:
             name = user_input["name"]
@@ -334,9 +391,10 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 ) as resp:
                     if resp.status == 200:
                         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                        return await self.async_step_pin_list()
             except:
                 pass
+            
+            return await self.async_step_main_menu()
 
         default_name = self._device_name or "Adam Controller"
         return self.async_show_form(
