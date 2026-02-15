@@ -148,9 +148,7 @@ class AdamConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
-    ) -> AdamOptionsFlow:
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Get the options flow."""
         return AdamOptionsFlow(config_entry)
 
