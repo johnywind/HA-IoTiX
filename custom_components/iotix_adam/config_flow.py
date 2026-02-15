@@ -150,15 +150,15 @@ class AdamConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Get the options flow."""
-        return AdamOptionsFlow(config_entry)
+        return AdamOptionsFlow()
 
 
 class AdamOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for IoTiX Adam."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        super().__init__()
         self._available_pins: list[dict] = []
         self._pin_to_configure: int | None = None
         self._pin_type: str | None = None
