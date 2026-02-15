@@ -64,7 +64,7 @@ class AdamConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if info.get("model") != "Adam" or info.get("manufacturer") != "IoTiX":
                         return self.async_abort(reason="not_adam_controller")
                     
-                    self._name = info.get("name", "Adam Controller")
+                    self._name = info.get("name", "IoTiX")
                     
                     self.context["title_placeholders"] = {
                         "name": self._name,
@@ -123,7 +123,7 @@ class AdamConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             self._abort_if_unique_id_configured()
 
                             return self.async_create_entry(
-                                title=user_input.get(CONF_NAME, info.get("name", "Adam Controller")),
+                                title=user_input.get(CONF_NAME, info.get("name", "IoTiX")),
                                 data={
                                     CONF_HOST: host,
                                     CONF_MAC: mac,
@@ -140,7 +140,7 @@ class AdamConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_HOST): str,
-                    vol.Optional(CONF_NAME, default="Adam Controller"): str,
+                    vol.Optional(CONF_NAME, default="IoTiX"): str,
                 }
             ),
             errors=errors,
@@ -186,7 +186,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             ) as resp:
                 if resp.status == 200:
                     info = await resp.json()
-                    self._device_name = info.get("name", "Adam Controller")
+                    self._device_name = info.get("name", "IoTiX")
             
             # Get pin configuration
             async with session.get(
@@ -407,7 +407,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             
             return await self.async_step_main_menu()
 
-        default_name = self._device_name or "Adam Controller"
+        default_name = self._device_name or "IoTiX"
         return self.async_show_form(
             step_id="device_name",
             data_schema=vol.Schema({

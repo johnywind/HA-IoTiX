@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configurare Controller IoTiX Adam",
+        "title": "Configurare IoTiX",
         "description": "Introdu adresa IP a controlerului Adam",
         "data": {
           "host": "Adresă IP",
@@ -10,20 +10,20 @@
         }
       },
       "discovery_confirm": {
-        "title": "Controller IoTiX Adam Descoperit",
+        "title": "IoTiX Descoperit",
         "description": "Vrei să adaugi controllerul Adam de la {host}?"
       }
     },
     "error": {
       "cannot_connect": "Nu s-a putut conecta la dispozitiv",
-      "not_adam_controller": "Acesta nu este un controller IoTiX Adam",
+      "not_adam_controller": "Acesta nu este un controller IoTiX",
       "unknown": "Eroare neașteptată"
     },
     "abort": {
       "already_configured": "Dispozitivul este deja configurat",
       "no_mac": "Nu s-a putut determina adresa MAC",
       "cannot_connect": "Nu s-a putut conecta la dispozitiv",
-      "not_adam_controller": "Acesta nu este un controller IoTiX Adam"
+      "not_adam_controller": "Acesta nu este un controller IoTiX"
     }
   },
   "options": {

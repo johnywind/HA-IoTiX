@@ -1,7 +1,7 @@
-# IoTiX Adam Controller
+# IoTiX
 
 <p align="center">
-  <img src="icon.png" alt="IoTiX Adam Controller Logo" width="200"/>
+  <img src="icon.png" alt="IoTiX Logo" width="200"/>
 </p>
 
 Home Assistant integration for IoTiX Adam (ESP32 + PCF8575).
@@ -14,7 +14,7 @@ Home Assistant integration for IoTiX Adam (ESP32 + PCF8575).
 ## Installation (HACS)
 1. Add this repository to HACS (Custom repositories).
 2. Select category: Integration.
-3. Install "IoTiX Adam Controller".
+3. Install "IoTiX".
 4. Restart Home Assistant.
 5. Go to Settings -> Devices & Services and add the integration.
 

@@ -1,6 +1,6 @@
 {
   "domain": "iotix_adam",
-  "name": "IoTiX Adam Controller",
+  "name": "IoTiX",
   "documentation": "https://github.com/iotix/adam-homeassistant",
   "codeowners": ["@iotix"],
   "requirements": ["aiohttp>=3.8.0"],
