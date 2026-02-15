@@ -305,6 +305,15 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             host = self.config_entry.data[CONF_HOST]
             session = async_get_clientsession(self.hass)
+            
+            # Skip if user selected "unconfigured" with empty name
+            if user_input["type"] == "unconfigured":
+                # TODO: Add API call to remove/unconfigure pin
+                # For now, just return to the list
+                if is_input:
+                    return await self.async_step_configure_inputs()
+                else:
+                    return await self.async_step_configure_outputs()
 
             config_data = {
                 "pin": pin_num,
@@ -319,13 +328,15 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     if resp.status == 200:
+                        # Refresh pin data before going back
+                        await self._fetch_pin_data()
                         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
                         if is_input:
                             return await self.async_step_configure_inputs()
                         else:
                             return await self.async_step_configure_outputs()
-            except:
-                pass
+            except Exception as err:
+                _LOGGER.error("Error configuring pin %s: %s", pin_num, err)
             
             # If we get here, there was an error, but continue anyway
             if is_input:
