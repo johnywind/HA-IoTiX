@@ -1,0 +1,6 @@
+{
+  "name": "IoTiX Adam Controller",
+  "domain": "iotix_adam",
+  "content_in_root": false,
+  "render_readme": false
+}
