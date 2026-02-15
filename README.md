@@ -1,5 +1,9 @@
 # IoTiX Adam Controller
 
+<p align="center">
+  <img src="icon.png" alt="IoTiX Adam Controller Logo" width="200"/>
+</p>
+
 Home Assistant integration for IoTiX Adam (ESP32 + PCF8575).
 
 ## Features
