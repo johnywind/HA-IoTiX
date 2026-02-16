@@ -1,7 +1,7 @@
 """Constants for IoTiX Adam integration."""
 from typing import Final
 
-DOMAIN: Final = "iotix_adam"
+DOMAIN: Final = "iotix"
 MANUFACTURER: Final = "IoTiX"
 MODEL: Final = "Adam"
 

@@ -19,7 +19,7 @@ Home Assistant integration for IoTiX Adam (ESP32 + PCF8575).
 5. Go to Settings -> Devices & Services and add the integration.
 
 ## Installation (Manual)
-1. Copy the `iotix_adam` folder into `config/custom_components/`.
+1. Copy the `iotix` folder into `config/custom_components/`.
 2. Restart Home Assistant.
 3. Go to Settings -> Devices & Services and add the integration.
 
