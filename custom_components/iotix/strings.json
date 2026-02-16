@@ -28,25 +28,41 @@
   },
   "options": {
     "step": {
-      "pin_list": {
-        "title": "Pin Configuration",
-        "description": "{pin_info}",
+      "main_menu": {
+        "title": "Configuration Menu",
+        "description": "{status}",
         "data": {
           "action": "Action"
         }
       },
-      "select_pin": {
-        "title": "Select Pin to Configure",
+      "device_name": {
+        "title": "Set Controller Name",
+        "description": "Enter a friendly name for your Adam controller",
         "data": {
-          "pin": "Pin"
+          "device_name": "Controller Name"
         }
       },
-      "configure_pin": {
-        "title": "Configure Pin {pin}",
-        "description": "Select the type and name for this pin",
+      "configure_inputs": {
+        "title": "Configure Inputs",
+        "description": "{step_description}",
         "data": {
+          "input": "Input"
+        }
+      },
+      "configure_outputs": {
+        "title": "Configure Outputs",
+        "description": "{step_description}",
+        "data": {
+          "output": "Output"
+        }
+      },
+      "edit_pin": {
+        "title": "Configure {pin}",
+        "description": "Set the name, type, and trigger output (for inputs)",
+        "data": {
+          "name": "Name",
           "type": "Type",
-          "name": "Name"
+          "trigger_output": "Trigger Output"
         }
       }
     }

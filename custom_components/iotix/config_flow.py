@@ -264,7 +264,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required("input"): vol.In(input_options),
             }),
-            description_placeholders={"info": "Select an input to configure"},
+            description_placeholders={"step_description": "Please select the input you want to configure"},
         )
 
     async def async_step_configure_outputs(
@@ -292,7 +292,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required("output"): vol.In(output_options),
             }),
-            description_placeholders={"info": "Select an output to configure"},
+            description_placeholders={"step_description": "Please select the output you want to configure"},
         )
 
     async def async_step_configure_all(
