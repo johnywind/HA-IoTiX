@@ -214,6 +214,8 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_configure_inputs()
             elif action == "configure_outputs":
                 return await self.async_step_configure_outputs()
+            elif action == "configure_triggers":
+                return await self.async_step_configure_triggers()
             elif action == "done":
                 return self.async_create_entry(title="", data={})
 
@@ -233,6 +235,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                         "device_name": "Set Controller Name",
                         "configure_inputs": "Configure Inputs (16)",
                         "configure_outputs": "Configure Outputs (16)",
+                        "configure_triggers": "Configure Input Triggers",
                         "done": "Done",
                     }),
                 }
@@ -293,6 +296,91 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("output"): vol.In(output_options),
             }),
             description_placeholders={"info": "Select an output to configure"},
+        )
+
+    async def async_step_configure_triggers(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure input-to-output triggers."""
+        if user_input is not None:
+            input_num = user_input["input"]
+            self._pin_to_configure = input_num
+            self._is_input = True
+            return await self.async_step_select_trigger_output()
+
+        # Build list of all configured inputs
+        input_options = {}
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") == "binary_sensor"), None)
+            if pin_config:
+                input_options[i] = f"Input {i+1}: {pin_config.get('name', 'Unnamed')}"
+            
+        if not input_options:
+            # No inputs configured
+            return self.async_show_form(
+                step_id="configure_triggers",
+                data_schema=vol.Schema({}),
+                description_placeholders={"info": "No inputs configured. Please configure inputs first."},
+            )
+
+        return self.async_show_form(
+            step_id="configure_triggers",
+            data_schema=vol.Schema({
+                vol.Required("input"): vol.In(input_options),
+            }),
+            description_placeholders={"info": "Select an input to configure its trigger"},
+        )
+
+    async def async_step_select_trigger_output(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Select which output an input should trigger."""
+        pin_num = self._pin_to_configure
+        
+        if user_input is not None:
+            output_num = user_input["output"]
+            host = self.config_entry.data[CONF_HOST]
+            session = async_get_clientsession(self.hass)
+            
+            if output_num == 255:  # Special value for "None"
+                # Don't set a trigger, just go back
+                return await self.async_step_configure_triggers()
+            
+            config_data = {
+                "inputPin": pin_num,
+                "outputPin": output_num,
+            }
+            
+            try:
+                async with session.post(
+                    f"http://{host}/api/input/trigger/set",
+                    json=config_data,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            except Exception as err:
+                _LOGGER.error("Error setting input trigger: %s", err)
+            
+            return await self.async_step_configure_triggers()
+
+        # Build list of outputs (only light and switch)
+        output_options = {255: "None (No trigger)"}
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") in ["light", "switch"]), None)
+            if pin_config:
+                pin_type = pin_config.get("type", "").capitalize()
+                output_options[i] = f"Output {i+1}: {pin_config.get('name', 'Unnamed')} ({pin_type})"
+        
+        input_config = next((p for p in self._all_pins if p.get("pin") == pin_num), None)
+        input_name = input_config.get("name", f"Input {pin_num + 1}") if input_config else f"Input {pin_num + 1}"
+        
+        return self.async_show_form(
+            step_id="select_trigger_output",
+            data_schema=vol.Schema({
+                vol.Required("output"): vol.In(output_options),
+            }),
+            description_placeholders={"input": input_name},
         )
 
     async def async_step_configure_all(
