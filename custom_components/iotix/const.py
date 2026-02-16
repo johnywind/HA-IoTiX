@@ -10,7 +10,7 @@ CONF_HOST: Final = "host"
 CONF_MAC: Final = "mac"
 
 # Update interval
-UPDATE_INTERVAL: Final = 30  # seconds
+UPDATE_INTERVAL: Final = 5  # seconds - fast polling for input detection
 
 # Pin types
 PIN_TYPE_LIGHT: Final = "light"
@@ -32,3 +32,5 @@ API_PINS_CONFIG: Final = "/api/pins/config"
 API_PIN_CONFIGURE: Final = "/api/pin/configure"
 API_PIN_STATE: Final = "/api/pin/state"
 API_PIN_CONTROL: Final = "/api/pin/control"
+API_INPUT_TRIGGERS: Final = "/api/input/triggers"
+API_INPUT_TRIGGER_SET: Final = "/api/input/trigger/set"

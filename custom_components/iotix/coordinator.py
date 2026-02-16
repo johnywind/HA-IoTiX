@@ -20,6 +20,7 @@ from .const import (
     API_INFO,
     API_PINS_CONFIG,
     API_PIN_STATE,
+    API_INPUT_TRIGGERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,10 +80,24 @@ class AdamCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning("Error fetching state for pin %s: %s", pin, err)
                     continue
 
+            # Get input trigger mappings
+            triggers = {}
+            try:
+                async with self.session.get(
+                    f"{self.base_url}{API_INPUT_TRIGGERS}",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        triggers_data = await resp.json()
+                        triggers = triggers_data.get("triggers", [])
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.warning("Error fetching input triggers: %s", err)
+
             return {
                 "device_info": device_info,
                 "pins_config": pins_config.get("pins", []),
                 "pin_states": pin_states,
+                "triggers": triggers,
             }
 
         except (aiohttp.ClientError, TimeoutError) as err:

@@ -54,6 +54,9 @@ InputTrigger inputTriggers[16]; // Max 16 inputs, each can trigger one output
 uint32_t bootStartMs = 0;
 char deviceName[MAX_DEVICE_NAME_LEN];
 
+// Forward declaration for early helper functions
+void initDefaultInputTriggers();
+
 void savePinConfig() {
   prefs.begin(NVS_NAMESPACE, false);
   prefs.putBytes(NVS_PINS_KEY, pinConfigs, sizeof(pinConfigs));
@@ -83,7 +86,12 @@ void loadInputTriggers() {
 void initDefaultInputTriggers() {
   for (int i = 0; i < 16; i++) {
     inputTriggers[i].inputPin = i;
-    inputTriggers[i].outputPin = i;  // Default: input N triggers output N
+    // Map: input 0 -> output 8, input 1 -> output 9, ..., input 7 -> output 15
+    if (i < 8) {
+      inputTriggers[i].outputPin = i + 8;  // Inputs 0-7 trigger outputs 8-15
+    } else {
+      inputTriggers[i].outputPin = 255;  // Outputs don't trigger anything by default
+    }
     inputTriggers[i].triggered = false;
   }
   saveInputTriggers();
@@ -126,14 +134,31 @@ void setDefaultPinName(uint8_t pin, const String& type, char* outName, size_t ou
 }
 
 void initDefaultConfig() {
+  // Configure pins 0-15
+  // Pins 0-7: binary_sensor (inputs)
+  // Pins 8-15: light (outputs)
   for (int i = 0; i < 16; i++) {
     pinConfigs[i].pin = i;
-    pinConfigs[i].type[0] = '\0';
-    pinConfigs[i].name[0] = '\0';
     pinConfigs[i].state = false;
     pinConfigs[i].brightness = 255;
-    pinConfigured[i] = false;
+    memset(pinConfigs[i].type, 0, MAX_TYPE_LEN);
+    memset(pinConfigs[i].name, 0, MAX_NAME_LEN);
+    
+    // Configure as input (binary_sensor) or output (light)
+    if (i < 8) {
+      // Inputs: pins 0-7
+      strcpy(pinConfigs[i].type, "binary_sensor");
+      String defaultName = "Input " + String(i + 1);
+      defaultName.toCharArray(pinConfigs[i].name, MAX_NAME_LEN);
+    } else {
+      // Outputs: pins 8-15
+      strcpy(pinConfigs[i].type, "light");
+      String defaultName = "Output " + String(i - 7); // Output 1-8
+      defaultName.toCharArray(pinConfigs[i].name, MAX_NAME_LEN);
+    }
+    pinConfigured[i] = true;
   }
+  
   initDefaultInputTriggers();
 }
 
@@ -159,6 +184,7 @@ void loadPinConfig() {
     prefs.getBytes(NVS_CONF_KEY, pinConfigured, sizeof(pinConfigured));
   } else {
     initDefaultConfig();
+    savePinConfig();  // Save the default configuration
   }
   prefs.end();
   
@@ -245,6 +271,8 @@ void handlePinControl();
 void handleInputTriggers();
 void handleSetInputTrigger();
 void handleReset();
+void processInputTriggers();
+void initDefaultInputTriggers();
 
 void setup() {
   Serial.begin(115200);
@@ -311,6 +339,20 @@ void setup() {
   
   Serial.println("IoTiX Adam Controller Ready");
   Serial.println("IP: " + WiFi.localIP().toString());
+  
+  // Debug: Show configured inputs and their trigger mappings
+  Serial.println("\n=== Configured Inputs ===");
+  for (int i = 0; i < 16; i++) {
+    if (pinConfigured[i] && String(pinConfigs[i].type) == "binary_sensor") {
+      Serial.print("Input ");
+      Serial.print(i);
+      Serial.print(" (");
+      Serial.print(pinConfigs[i].name);
+      Serial.print(") -> Output ");
+      Serial.println(inputTriggers[i].outputPin);
+    }
+  }
+  Serial.println("========================\n");
 }
 
 void loop() {
@@ -323,7 +365,11 @@ void processInputTriggers() {
   // Monitor all inputs for state changes and trigger outputs
   for (int i = 0; i < 16; i++) {
     // Check if this pin is configured as an input (binary_sensor)
-    if (!pinConfigured[i] || String(pinConfigs[i].type) != "binary_sensor") {
+    if (!pinConfigured[i]) {
+      continue;
+    }
+    
+    if (String(pinConfigs[i].type) != "binary_sensor") {
       continue;
     }
     
@@ -331,16 +377,45 @@ void processInputTriggers() {
     bool currentState = pcf8575_inputs.read(i) == HIGH;
     bool wasTriggered = inputTriggers[i].triggered;
     
+    // Debug: Show input state changes
+    static bool lastStates[16] = {false};
+    if (currentState != lastStates[i]) {
+      Serial.print("[INPUT] Pin ");
+      Serial.print(i);
+      Serial.print(" (");
+      Serial.print(pinConfigs[i].name);
+      Serial.print(") changed to: ");
+      Serial.println(currentState ? "HIGH" : "LOW");
+      lastStates[i] = currentState;
+    }
+    
     // If input became HIGH and wasn't triggered yet
     if (currentState && !wasTriggered) {
+      Serial.print("[TRIGGER] Input ");
+      Serial.print(i);
+      Serial.println(" detected HIGH state");
+      
       // Mark as triggered
       inputTriggers[i].triggered = true;
       
       // Get the output to trigger
       uint8_t outputPin = inputTriggers[i].outputPin;
       
+      Serial.print("[TRIGGER] Attempting to trigger output ");
+      Serial.println(outputPin);
+      
       // Check if output pin is valid and configured
-      if (outputPin < 16 && pinConfigured[outputPin] && String(pinConfigs[outputPin].type) != "binary_sensor") {
+      if (outputPin >= 16) {
+        Serial.println("[TRIGGER] ERROR: Output pin out of range");
+      } else if (!pinConfigured[outputPin]) {
+        Serial.print("[TRIGGER] ERROR: Output pin ");
+        Serial.print(outputPin);
+        Serial.println(" is not configured");
+      } else if (String(pinConfigs[outputPin].type) == "binary_sensor") {
+        Serial.print("[TRIGGER] ERROR: Output pin ");
+        Serial.print(outputPin);
+        Serial.println(" is configured as input, not output");
+      } else if (outputPin < 16 && pinConfigured[outputPin] && String(pinConfigs[outputPin].type) != "binary_sensor") {
         // Trigger the output: toggle for switch, turn on for light/cover
         String type = String(pinConfigs[outputPin].type);
         
@@ -362,14 +437,23 @@ void processInputTriggers() {
         // Save the new state
         savePinConfig();
         
-        Serial.print("Input ");
+        Serial.print("[TRIGGER] SUCCESS: Input ");
         Serial.print(i);
-        Serial.print(" triggered Output ");
-        Serial.println(outputPin);
+        Serial.print(" (");
+        Serial.print(pinConfigs[i].name);
+        Serial.print(") triggered Output ");
+        Serial.print(outputPin);
+        Serial.print(" (");
+        Serial.print(pinConfigs[outputPin].name);
+        Serial.print(") to state: ");
+        Serial.println(pinConfigs[outputPin].state ? "ON" : "OFF");
       }
     }
     // If input went back to LOW, reset the triggered flag
     else if (!currentState && wasTriggered) {
+      Serial.print("[TRIGGER] Input ");
+      Serial.print(i);
+      Serial.println(" reset (went LOW)");
       inputTriggers[i].triggered = false;
     }
   }
