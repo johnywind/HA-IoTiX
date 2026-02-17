@@ -68,9 +68,10 @@ class AdamCoordinator(DataUpdateCoordinator):
             pin_states = {}
             for pin_config in pins_config.get("pins", []):
                 pin = pin_config["pin"]
+                is_input = pin_config.get("isInput", pin_config.get("type") == "binary_sensor")
                 try:
                     async with self.session.get(
-                        f"{self.base_url}{API_PIN_STATE}?pin={pin}",
+                        f"{self.base_url}{API_PIN_STATE}?pin={pin}&isInput={1 if is_input else 0}",
                         timeout=aiohttp.ClientTimeout(total=5),
                     ) as resp:
                         if resp.status == 200:

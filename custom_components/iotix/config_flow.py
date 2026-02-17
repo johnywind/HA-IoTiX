@@ -362,6 +362,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 "pin": pin_num,
                 "type": user_input["type"],
                 "name": user_input["name"],
+                "isInput": is_input,
             }
 
             try:

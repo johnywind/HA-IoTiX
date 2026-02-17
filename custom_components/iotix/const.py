@@ -10,7 +10,7 @@ CONF_HOST: Final = "host"
 CONF_MAC: Final = "mac"
 
 # Update interval
-UPDATE_INTERVAL: Final = 5  # seconds - fast polling for input detection
+UPDATE_INTERVAL: Final = 1  # seconds - very fast polling for real-time input detection
 
 # Pin types
 PIN_TYPE_LIGHT: Final = "light"
