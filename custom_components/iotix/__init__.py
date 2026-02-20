@@ -19,6 +19,7 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.COVER,
     Platform.BINARY_SENSOR,
+    Platform.EVENT,
 ]
 
 

@@ -21,6 +21,7 @@ from .const import (
     API_PINS_CONFIG,
     API_PIN_STATE,
     API_INPUT_TRIGGERS,
+    API_BUTTON_EVENTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class AdamCoordinator(DataUpdateCoordinator):
         self.mac = mac
         self.base_url = f"http://{host}"
         self.session = async_get_clientsession(hass)
+        self._button_event_listeners: dict[int, list] = {}  # pin -> list of callbacks
         
         super().__init__(
             hass,
@@ -42,6 +44,29 @@ class AdamCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
+    
+    def register_button_event_listener(self, pin: int, callback) -> None:
+        """Register a callback for button events on a specific pin."""
+        if pin not in self._button_event_listeners:
+            self._button_event_listeners[pin] = []
+        self._button_event_listeners[pin].append(callback)
+    
+    def _trigger_button_events(self, button_events: list) -> None:
+        """Trigger callbacks for any detected button events."""
+        for event in button_events:
+            pin = event.get("inputPin")
+            event_type = event.get("eventType")
+            
+            if pin in self._button_event_listeners:
+                for callback in self._button_event_listeners[pin]:
+                    try:
+                        callback(event_type)
+                    except Exception as err:
+                        _LOGGER.error(
+                            "Error calling button event callback for pin %s: %s",
+                            pin,
+                            err
+                        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Adam controller."""
@@ -94,11 +119,28 @@ class AdamCoordinator(DataUpdateCoordinator):
             except (aiohttp.ClientError, TimeoutError) as err:
                 _LOGGER.warning("Error fetching input triggers: %s", err)
 
+            # Get button events for push buttons
+            button_events = []
+            try:
+                async with self.session.get(
+                    f"{self.base_url}{API_BUTTON_EVENTS}",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        events_data = await resp.json()
+                        button_events = events_data.get("events", [])
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.debug("Error fetching button events: %s", err)
+            
+            # Trigger button event callbacks
+            self._trigger_button_events(button_events)
+
             return {
                 "device_info": device_info,
                 "pins_config": pins_config.get("pins", []),
                 "pin_states": pin_states,
                 "triggers": triggers,
+                "button_events": button_events,
             }
 
         except (aiohttp.ClientError, TimeoutError) as err:

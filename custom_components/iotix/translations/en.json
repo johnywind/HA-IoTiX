@@ -28,33 +28,62 @@
   },
   "options": {
     "step": {
-      "pin_list": {
-        "title": "Pin Configuration",
-        "description": "{pin_info}",
+      "main_menu": {
+        "title": "Configuration Menu",
+        "description": "{status}",
         "data": {
           "action": "Action"
-        },
-        "data_description": {
-          "action": "Choose to configure a new pin or finish setup"
         }
       },
-      "select_pin": {
-        "title": "Select Pin to Configure",
-        "description": "Choose which pin you want to configure",
+      "device_name": {
+        "title": "Set Controller Name",
         "data": {
-          "pin": "Pin"
-        }
-      },
-      "configure_pin": {
-        "title": "Configure Pin {pin}",
-        "description": "Select the type and name for this pin",
-        "data": {
-          "type": "Type",
           "name": "Name"
-        },
-        "data_description": {
-          "type": "What kind of device is connected to this pin?",
-          "name": "Give this pin a friendly name"
+        }
+      },
+      "configure_inputs": {
+        "title": "Configure Inputs",
+        "description": "{status}",
+        "data": {
+          "input": "Input"
+        }
+      },
+      "configure_outputs": {
+        "title": "Select output to configure",
+        "description": "{status}",
+        "data": {
+          "output": "Output"
+        }
+      },
+      "edit_pin": {
+        "title": "Configure Pin",
+        "description": "{info}",
+        "data": {
+          "name": "Name",
+          "type": "Type"
+        }
+      },
+      "button_mode": {
+        "title": "Button Mode",
+        "description": "{info}",
+        "data": {
+          "buttonMode": "Button Mode"
+        }
+      },
+      "classic_trigger": {
+        "title": "Classic Button Output",
+        "description": "{info}",
+        "data": {
+          "trigger_output": "Trigger Output"
+        }
+      },
+      "push_triggers": {
+        "title": "Push Button Actions",
+        "description": "{info}",
+        "data": {
+          "short_press_output": "Short Press Action",
+          "long_press_output": "Long Press Action",
+          "double_press_output": "Double Press Action"
         }
       }
     }

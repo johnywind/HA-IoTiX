@@ -25,6 +25,20 @@ PIN_TYPES: Final = [
     PIN_TYPE_BINARY_SENSOR,
 ]
 
+# Button modes
+BUTTON_MODE_CLASSIC: Final = "classic"
+BUTTON_MODE_PUSH: Final = "push"
+
+BUTTON_MODES: Final = [
+    BUTTON_MODE_CLASSIC,
+    BUTTON_MODE_PUSH,
+]
+
+# Button press types
+BUTTON_PRESS_SHORT: Final = "short_press"
+BUTTON_PRESS_LONG: Final = "long_press"
+BUTTON_PRESS_DOUBLE: Final = "double_press"
+
 # API endpoints
 API_INFO: Final = "/api/info"
 API_PINS_AVAILABLE: Final = "/api/pins/available"
@@ -34,3 +48,4 @@ API_PIN_STATE: Final = "/api/pin/state"
 API_PIN_CONTROL: Final = "/api/pin/control"
 API_INPUT_TRIGGERS: Final = "/api/input/triggers"
 API_INPUT_TRIGGER_SET: Final = "/api/input/trigger/set"
+API_BUTTON_EVENTS: Final = "/api/button/events"

@@ -28,25 +28,62 @@
   },
   "options": {
     "step": {
-      "pin_list": {
-        "title": "Configurare Pini",
-        "description": "{pin_info}",
+      "main_menu": {
+        "title": "Meniu Configurare",
+        "description": "{status}",
         "data": {
           "action": "Acțiune"
         }
       },
-      "select_pin": {
-        "title": "Selectează Pinul de Configurat",
+      "device_name": {
+        "title": "Setează Numele Controlerului",
         "data": {
-          "pin": "Pin"
+          "name": "Nume"
         }
       },
-      "configure_pin": {
-        "title": "Configurare Pin {pin}",
-        "description": "Selectează tipul și numele pentru acest pin",
+      "configure_inputs": {
+        "title": "Selectează intrarea de configurat",
+        "description": "{status}",
         "data": {
-          "type": "Tip",
-          "name": "Nume"
+          "input": "Intrare"
+        }
+      },
+      "configure_outputs": {
+        "title": "Selectează ieșirea de configurat",
+        "description": "{status}",
+        "data": {
+          "output": "Ieșire"
+        }
+      },
+      "edit_pin": {
+        "title": "Configurare Pin",
+        "description": "{info}",
+        "data": {
+          "name": "Nume",
+          "type": "Tip"
+        }
+      },
+      "button_mode": {
+        "title": "Mod Buton",
+        "description": "{info}",
+        "data": {
+          "buttonMode": "Mod Buton"
+        }
+      },
+      "classic_trigger": {
+        "title": "Ieșire Buton Classic",
+        "description": "{info}",
+        "data": {
+          "trigger_output": "Ieșire Declanșată"
+        }
+      },
+      "push_triggers": {
+        "title": "Acțiuni Buton Push",
+        "description": "{info}",
+        "data": {
+          "short_press_output": "Acțiune Apăsare Scurtă",
+          "long_press_output": "Acțiune Apăsare Lungă",
+          "double_press_output": "Acțiune Apăsare Dublă"
         }
       }
     }

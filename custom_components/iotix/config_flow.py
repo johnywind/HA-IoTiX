@@ -18,6 +18,9 @@ from .const import (
     DOMAIN,
     CONF_MAC,
     PIN_TYPES,
+    BUTTON_MODES,
+    BUTTON_MODE_CLASSIC,
+    BUTTON_MODE_PUSH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -166,6 +169,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         self._pin_type: str | None = None
         self._device_name: str | None = None
         self._is_input: bool = False
+        self._input_config: dict[str, Any] = {}  # Store partial config between steps
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -259,12 +263,67 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             else:
                 input_options[i] = f"Input {i+1}: Not configured"
 
+        # Build summary of all inputs with their triggers
+        summary = "Current Input Configuration:\n\n"
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") == "binary_sensor"), None)
+            if not pin_config:
+                summary += f"Input {i+1}: Not configured\n"
+                continue
+
+            pin_name = pin_config.get("name", f"Input {i+1}")
+            button_mode = pin_config.get("buttonMode", BUTTON_MODE_CLASSIC)
+            
+            if button_mode == BUTTON_MODE_CLASSIC:
+                # Get trigger output info
+                trigger_output = pin_config.get("triggerOutput", 255)
+                if trigger_output != 255:
+                    output_config = next((p for p in self._all_pins if p.get("pin") == trigger_output and p.get("type") in ["light", "switch", "cover"]), None)
+                    if output_config:
+                        output_name = output_config.get("name", f"Output {trigger_output+1}")
+                        summary += f"Input {i+1}: {pin_name} is CLASSIC BUTTON\n"
+                        summary += f"  └─ triggers OUTPUT {trigger_output+1} ({output_name})\n"
+                    else:
+                        summary += f"Input {i+1}: {pin_name} is CLASSIC BUTTON\n"
+                        summary += f"  └─ triggers OUTPUT {trigger_output+1} (Not configured)\n"
+                else:
+                    summary += f"Input {i+1}: {pin_name} is CLASSIC BUTTON (no trigger output)\n"
+            
+            elif button_mode == BUTTON_MODE_PUSH:
+                # Get push button trigger outputs
+                short_output = pin_config.get("shortPressOutput", 255)
+                long_output = pin_config.get("longPressOutput", 255)
+                double_output = pin_config.get("doublePressOutput", 255)
+                
+                summary += f"Input {i+1}: {pin_name} is PUSH BUTTON\n"
+                
+                # Short press
+                if short_output != 255:
+                    output_config = next((p for p in self._all_pins if p.get("pin") == short_output and p.get("type") in ["light", "switch", "cover"]), None)
+                    output_name = output_config.get("name", f"Output {short_output+1}") if output_config else f"Output {short_output+1}"
+                    summary += f"  └─ Short Press → OUTPUT {short_output+1} ({output_name})\n"
+                
+                # Long press
+                if long_output != 255:
+                    output_config = next((p for p in self._all_pins if p.get("pin") == long_output and p.get("type") in ["light", "switch", "cover"]), None)
+                    output_name = output_config.get("name", f"Output {long_output+1}") if output_config else f"Output {long_output+1}"
+                    summary += f"  └─ Long Press → OUTPUT {long_output+1} ({output_name})\n"
+                
+                # Double press
+                if double_output != 255:
+                    output_config = next((p for p in self._all_pins if p.get("pin") == double_output and p.get("type") in ["light", "switch", "cover"]), None)
+                    output_name = output_config.get("name", f"Output {double_output+1}") if output_config else f"Output {double_output+1}"
+                    summary += f"  └─ Double Press → OUTPUT {double_output+1} ({output_name})\n"
+                
+                if short_output == 255 and long_output == 255 and double_output == 255:
+                    summary += "  └─ (no triggers configured)\n"
+
         return self.async_show_form(
             step_id="configure_inputs",
             data_schema=vol.Schema({
                 vol.Required("input"): vol.In(input_options),
             }),
-            description_placeholders={"step_description": "Please select the input you want to configure"},
+            description_placeholders={"status": summary},
         )
 
     async def async_step_configure_outputs(
@@ -287,12 +346,23 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             else:
                 output_options[i] = f"Output {i+1}: Not configured"
 
+        # Build summary of all outputs
+        summary = "Current Output Configuration:\n\n"
+        for i in range(16):
+            pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") in ["light", "switch", "cover"]), None)
+            if pin_config:
+                pin_name = pin_config.get("name", f"Output {i+1}")
+                pin_type = pin_config.get("type", "").upper()
+                summary += f"Output {i+1}: {pin_name} is {pin_type}\n"
+            else:
+                summary += f"Output {i+1}: Not configured\n"
+
         return self.async_show_form(
             step_id="configure_outputs",
             data_schema=vol.Schema({
                 vol.Required("output"): vol.In(output_options),
             }),
-            description_placeholders={"step_description": "Please select the output you want to configure"},
+            description_placeholders={"status": summary},
         )
 
     async def async_step_configure_all(
@@ -341,76 +411,44 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
     async def async_step_edit_pin(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Edit a specific input or output."""
+        """Edit a specific input or output - Step 1: Name and Type."""
         pin_num = self._pin_to_configure
         is_input = self._is_input
         
         if user_input is not None:
-            host = self.config_entry.data[CONF_HOST]
-            session = async_get_clientsession(self.hass)
+            # Store config for next step
+            self._input_config = {
+                "pin": pin_num,
+                "name": user_input["name"],
+                "type": user_input["type"],
+                "isInput": is_input,
+            }
             
-            # Skip if user selected "unconfigured" with empty name
+            # If unconfigured, save immediately
             if user_input["type"] == "unconfigured":
                 # TODO: Add API call to remove/unconfigure pin
-                # For now, just return to the list
                 if is_input:
                     return await self.async_step_configure_inputs()
                 else:
                     return await self.async_step_configure_outputs()
-
-            config_data = {
-                "pin": pin_num,
-                "type": user_input["type"],
-                "name": user_input["name"],
-                "isInput": is_input,
-            }
-
-            try:
-                async with session.post(
-                    f"http://{host}/api/pin/configure",
-                    json=config_data,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    if resp.status == 200:
-                        # If this is an input and has a trigger output, set it
-                        if is_input and "trigger_output" in user_input:
-                            trigger_output = user_input["trigger_output"]
-                            if trigger_output != 255:  # 255 = None
-                                trigger_data = {
-                                    "inputPin": pin_num,
-                                    "outputPin": trigger_output,
-                                }
-                                try:
-                                    async with session.post(
-                                        f"http://{host}/api/input/trigger/set",
-                                        json=trigger_data,
-                                        timeout=aiohttp.ClientTimeout(total=10),
-                                    ) as trigger_resp:
-                                        if trigger_resp.status != 200:
-                                            _LOGGER.warning("Failed to set input trigger")
-                                except Exception as err:
-                                    _LOGGER.warning("Error setting input trigger: %s", err)
-                        
-                        # Refresh pin data before going back
-                        await self._fetch_pin_data()
-                        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                        if is_input:
-                            return await self.async_step_configure_inputs()
-                        else:
-                            return await self.async_step_configure_outputs()
-            except Exception as err:
-                _LOGGER.error("Error configuring pin %s: %s", pin_num, err)
             
-            # If we get here, there was an error, but continue anyway
-            if is_input:
-                return await self.async_step_configure_inputs()
-            else:
-                return await self.async_step_configure_outputs()
+            # For outputs, save immediately (no additional config needed)
+            if not is_input:
+                return await self._save_pin_config(self._input_config)
+            
+            # For inputs with type "button", go to button mode selection
+            if user_input["type"] == "button":
+                return await self.async_step_button_mode()
+            
+            # For binary_sensor inputs, save with classic mode default
+            self._input_config["buttonMode"] = BUTTON_MODE_CLASSIC
+            return await self._save_pin_config(self._input_config)
 
         # Get current configuration
         pin_config = next((p for p in self._all_pins if p.get("pin") == pin_num), None)
         current_name = pin_config.get("name", "") if pin_config else ""
         current_type = pin_config.get("type", "") if pin_config else ""
+        current_button_mode = pin_config.get("buttonMode", BUTTON_MODE_CLASSIC) if pin_config else BUTTON_MODE_CLASSIC
 
         # Default names
         if not current_name:
@@ -422,16 +460,23 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         # Type options
         if is_input:
             type_options = {
-                "binary_sensor": "Binary Sensor (Input)",
+                "binary_sensor": "Binary Sensor (e.g. door/window sensor)",
+                "button": "Button (e.g. physical button with triggers)",
                 "unconfigured": "Not Configured",
             }
+            # Map current config to new type system
+            if current_type == "binary_sensor":
+                if current_button_mode in [BUTTON_MODE_CLASSIC, BUTTON_MODE_PUSH]:
+                    current_type = "button"
+                else:
+                    current_type = "binary_sensor"
             if not current_type:
-                current_type = "binary_sensor"
+                current_type = "button"  # Default to button
         else:
             type_options = {
-                "light": "Light",
-                "switch": "Switch",
-                "cover": "Cover",
+                "light": "Light (e.g. on/off light)",
+                "switch": "Switch (e.g. simple on/off switch)",
+                "cover": "Cover (e.g. blinds, shades, garage door or gate)",
                 "unconfigured": "Not Configured",
             }
             if not current_type:
@@ -439,31 +484,275 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
 
         pin_label = f"Input {pin_num + 1}" if is_input else f"Output {pin_num + 1}"
         
+        # Build description
+        if is_input:
+            description = f"Configure {pin_label}\n\n"
+            description += "Step 1: Set the name and type\n\n"
+        else:
+            description = f"Configure {pin_label}\n\n"
+            description += "Step 1: Set the name and type\n\n"
+        
         # Build schema
         schema_dict = {
             vol.Required("name", default=current_name): str,
             vol.Required("type", default=current_type): vol.In(type_options),
         }
         
-        # Add trigger output field for inputs
-        if is_input:
-            # Build list of outputs (only light and switch)
-            output_options = {255: "None (No trigger)"}
-            for i in range(16):
-                pin_config = next((p for p in self._all_pins if p.get("pin") == i and p.get("type") in ["light", "switch"]), None)
-                if pin_config:
-                    pin_type = pin_config.get("type", "").capitalize()
-                    output_options[i] = f"Output {i+1}: {pin_config.get('name', 'Unnamed')} ({pin_type})"
-            
-            # Get current trigger output (default is pin_num)
-            current_trigger = pin_num  # Default: input N triggers output N
-            schema_dict[vol.Optional("trigger_output", default=current_trigger)] = vol.In(output_options)
-        
         return self.async_show_form(
             step_id="edit_pin",
             data_schema=vol.Schema(schema_dict),
-            description_placeholders={"pin": pin_label},
+            description_placeholders={"info": description},
         )
+    
+    async def async_step_button_mode(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure button mode - Step 2 for button inputs."""
+        if user_input is not None:
+            button_mode = user_input["buttonMode"]
+            self._input_config["buttonMode"] = button_mode
+            
+            # For classic mode, go to single trigger output selection
+            if button_mode == BUTTON_MODE_CLASSIC:
+                return await self.async_step_classic_trigger()
+            
+            # For push mode, go to push button triggers
+            return await self.async_step_push_triggers()
+        
+        # Get current button mode
+        pin_num = self._pin_to_configure
+        pin_config = next((p for p in self._all_pins if p.get("pin") == pin_num), None)
+        current_button_mode = pin_config.get("buttonMode", BUTTON_MODE_CLASSIC) if pin_config else BUTTON_MODE_CLASSIC
+        
+        button_mode_options = {
+            BUTTON_MODE_CLASSIC: "Classic Button (Simple On/Off)",
+            BUTTON_MODE_PUSH: "Push Button (Short/Long/Double Press)",
+        }
+        
+        # Build context message
+        pin_label = f"Input {pin_num + 1}"
+        config_name = self._input_config.get("name", "")
+        description = f"Configure {pin_label}: {config_name}\n\n"
+        description += "Step 2 of 3: Select button mode\n\n"
+        
+        return self.async_show_form(
+            step_id="button_mode",
+            data_schema=vol.Schema({
+                vol.Required("buttonMode", default=current_button_mode): vol.In(button_mode_options),
+            }),
+            description_placeholders={
+                "info": description,
+            },
+        )
+    
+    async def async_step_classic_trigger(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure trigger output for classic button."""
+        if user_input is not None:
+            self._input_config["trigger_output"] = user_input["trigger_output"]
+            return await self._save_pin_config(self._input_config)
+        
+        # Build list of ALL outputs (any can be selected)
+        output_options = {255: "None (No trigger)"}
+        for i in range(16):
+            output_config = next((p for p in self._all_pins if p.get("pin") == i and not p.get("isInput", False)), None)
+            if output_config:
+                pin_type = output_config.get("type", "").capitalize()
+                output_options[i] = f"Output {i+1}: {output_config.get('name', 'Unnamed')} ({pin_type})"
+            else:
+                output_options[i] = f"Output {i+1}: Not configured"
+        
+        # Get current trigger (default to same pin number)
+        pin_num = self._pin_to_configure
+        current_trigger = pin_num
+        
+        # Build context message
+        pin_label = f"Input {pin_num + 1}"
+        config_name = self._input_config.get("name", "")
+        description = f"Configure {pin_label}: {config_name}\n\n"
+        description += "Step 3 of 3: Select output to control\n\n"
+        description += "Mode: Classic Button (On/Off Toggle)\n\n"
+        description += "The button will directly toggle the selected output.\n"
+        description += "Select 'None' if you only want to use this as a sensor."
+        
+        return self.async_show_form(
+            step_id="classic_trigger",
+            data_schema=vol.Schema({
+                vol.Required("trigger_output", default=current_trigger): vol.In(output_options),
+            }),
+            description_placeholders={
+                "info": description,
+            },
+        )
+    
+    async def async_step_push_triggers(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure trigger outputs for push button - all three press types."""
+        if user_input is not None:
+            self._input_config["short_press_output"] = user_input["short_press_output"]
+            self._input_config["long_press_output"] = user_input["long_press_output"]
+            self._input_config["double_press_output"] = user_input["double_press_output"]
+            
+            # Add default timing values
+            self._input_config["longPressDuration"] = 500
+            self._input_config["doublePressTimeframe"] = 300
+            
+            return await self._save_pin_config(self._input_config)
+        
+        # Build list of ALL outputs (any can be selected, even duplicates)
+        output_options = {255: "None (No action)"}
+        for i in range(16):
+            output_config = next((p for p in self._all_pins if p.get("pin") == i and not p.get("isInput", False)), None)
+            if output_config:
+                pin_type = output_config.get("type", "").capitalize()
+                output_options[i] = f"Output {i+1}: {output_config.get('name', 'Unnamed')} ({pin_type})"
+            else:
+                output_options[i] = f"Output {i+1}: Not configured"
+        
+        # Defaults (all can be different or the same)
+        pin_num = self._pin_to_configure
+        
+        # Build context message
+        pin_label = f"Input {pin_num + 1}"
+        config_name = self._input_config.get("name", "")
+        description = f"Configure {pin_label}: {config_name}\n\n"
+        description += "Step 3 of 3: Assign actions for each press type\n\n"
+        description += "Mode: Push Button (Multi-Action)\n\n"
+        description += "Press Types:\n"
+        description += "• Short Press - Quick tap (< 500ms)\n"
+        description += "• Long Press - Hold button (≥ 500ms)\n"
+        description += "• Double Press - Two quick taps (< 300ms apart)\n\n"
+        description += "Each press type can toggle a different output.\n"
+        description += "You can also use these in automations via events.\n\n"
+        description += "Select 'None' for any press type you don't want to use."
+        
+        return self.async_show_form(
+            step_id="push_triggers",
+            data_schema=vol.Schema({
+                vol.Required("short_press_output", default=255): vol.In(output_options),
+                vol.Required("long_press_output", default=255): vol.In(output_options),
+                vol.Required("double_press_output", default=255): vol.In(output_options),
+            }),
+            description_placeholders={
+                "info": description,
+            },
+        )
+    
+    async def _save_pin_config(self, config_data: dict[str, Any]) -> FlowResult:
+        """Save pin configuration to device."""
+        host = self.config_entry.data[CONF_HOST]
+        session = async_get_clientsession(self.hass)
+        pin_num = config_data["pin"]
+        is_input = config_data["isInput"]
+        
+        # Prepare payload for device
+        payload = {
+            "pin": pin_num,
+            "type": "binary_sensor" if config_data.get("type") == "button" else config_data["type"],
+            "name": config_data["name"],
+            "isInput": is_input,
+        }
+        
+        # Add button mode if present
+        if "buttonMode" in config_data:
+            payload["buttonMode"] = config_data["buttonMode"]
+        
+        # Add timing if present
+        if "longPressDuration" in config_data:
+            payload["longPressDuration"] = config_data["longPressDuration"]
+        if "doublePressTimeframe" in config_data:
+            payload["doublePressTimeframe"] = config_data["doublePressTimeframe"]
+        
+        try:
+            async with session.post(
+                f"http://{host}/api/pin/configure",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    # Set trigger outputs
+                    if "trigger_output" in config_data and config_data["trigger_output"] != 255:
+                        await self._set_trigger(pin_num, config_data["trigger_output"])
+                    
+                    # Handle push button triggers (short/long/double)
+                    if ("short_press_output" in config_data or 
+                        "long_press_output" in config_data or 
+                        "double_press_output" in config_data):
+                        await self._set_push_triggers(
+                            pin_num,
+                            config_data.get("short_press_output", 255),
+                            config_data.get("long_press_output", 255),
+                            config_data.get("double_press_output", 255)
+                        )
+                    
+                    # Refresh and return
+                    await self._fetch_pin_data()
+                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                    
+                    if is_input:
+                        return await self.async_step_configure_inputs()
+                    else:
+                        return await self.async_step_configure_outputs()
+        except Exception as err:
+            _LOGGER.error("Error configuring pin %s: %s", pin_num, err)
+        
+        # On error, return to list
+        if is_input:
+            return await self.async_step_configure_inputs()
+        else:
+            return await self.async_step_configure_outputs()
+    
+    async def _set_trigger(self, input_pin: int, output_pin: int) -> None:
+        """Set trigger mapping for an input."""
+        host = self.config_entry.data[CONF_HOST]
+        session = async_get_clientsession(self.hass)
+        
+        trigger_data = {
+            "inputPin": input_pin,
+            "outputPin": output_pin,
+        }
+        
+        try:
+            async with session.post(
+                f"http://{host}/api/input/trigger/set",
+                json=trigger_data,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Failed to set input trigger")
+        except Exception as err:
+            _LOGGER.warning("Error setting input trigger: %s", err)
+    
+    async def _set_push_triggers(
+        self, 
+        input_pin: int, 
+        short_press_output: int,
+        long_press_output: int,
+        double_press_output: int
+    ) -> None:
+        """Set push button trigger mappings for an input."""
+        host = self.config_entry.data[CONF_HOST]
+        session = async_get_clientsession(self.hass)
+        
+        trigger_data = {
+            "inputPin": input_pin,
+            "shortPressOutput": short_press_output,
+            "longPressOutput": long_press_output,
+            "doublePressOutput": double_press_output,
+        }
+        
+        try:
+            async with session.post(
+                f"http://{host}/api/input/trigger/set",
+                json=trigger_data,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Failed to set push button triggers")
+        except Exception as err:
+            _LOGGER.warning("Error setting push button triggers: %s", err)
 
     async def async_step_device_name(
         self, user_input: dict[str, Any] | None = None

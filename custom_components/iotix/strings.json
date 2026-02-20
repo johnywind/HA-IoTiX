@@ -44,25 +44,47 @@
       },
       "configure_inputs": {
         "title": "Configure Inputs",
-        "description": "{step_description}",
+        "description": "{status}",
         "data": {
           "input": "Input"
         }
       },
       "configure_outputs": {
-        "title": "Configure Outputs",
-        "description": "{step_description}",
+        "title": "Selectează ieșirea de configurat",
+        "description": "{status}",
         "data": {
-          "output": "Output"
+          "output": "Ieșire"
         }
       },
       "edit_pin": {
-        "title": "Configure {pin}",
-        "description": "Set the name, type, and trigger output (for inputs)",
+        "title": "Configure Pin",
+        "description": "{info}",
         "data": {
           "name": "Name",
-          "type": "Type",
+          "type": "Type"
+        }
+      },
+      "button_mode": {
+        "title": "Button Mode",
+        "description": "{info}",
+        "data": {
+          "buttonMode": "Button Mode"
+        }
+      },
+      "classic_trigger": {
+        "title": "Classic Button Output",
+        "description": "{info}",
+        "data": {
           "trigger_output": "Trigger Output"
+        }
+      },
+      "push_triggers": {
+        "title": "Push Button Actions",
+        "description": "{info}",
+        "data": {
+          "short_press_output": "Short Press Action",
+          "long_press_output": "Long Press Action",
+          "double_press_output": "Double Press Action"
         }
       }
     }
