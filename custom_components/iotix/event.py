@@ -75,10 +75,9 @@ class AdamButtonEvent(AdamEntity, EventEntity):
     def available(self) -> bool:
         """Return if entity is available."""
         # Check if this is a push button input
-        pin_config = self._get_pin_config()
-        if not pin_config:
+        if not self._pin_config:
             return False
         return (
-            pin_config.get("isInput", False)
-            and pin_config.get("buttonMode") == BUTTON_MODE_PUSH
+            self._pin_config.get("isInput", False)
+            and self._pin_config.get("buttonMode") == BUTTON_MODE_PUSH
         )

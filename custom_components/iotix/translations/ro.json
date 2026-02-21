@@ -55,6 +55,26 @@
           "output": "Ieșire"
         }
       },
+      "configure_covers": {
+        "title": "Configurare Cover-uri",
+        "description": "{status}",
+        "data": {
+          "cover": "Cover"
+        }
+      },
+      "edit_cover": {
+        "title": "Configurare Cover",
+        "description": "{info}",
+        "data": {
+          "name": "Nume Cover",
+          "input_up": "Intrare SUS",
+          "output_up": "Ieșire SUS",
+          "up_time_sec": "Timer SUS",
+          "input_down": "Intrare JOS",
+          "output_down": "Ieșire JOS",
+          "down_time_sec": "Timer JOS"
+        }
+      },
       "edit_pin": {
         "title": "Configurare Pin",
         "description": "{info}",
@@ -86,6 +106,14 @@
           "double_press_output": "Acțiune Apăsare Dublă"
         }
       }
+    },
+    "error": {
+      "pin_managed_by_cover": "Acest pin este gestionat de un cover și nu poate fi editat aici",
+      "cover_inputs_must_differ": "Intrarea Sus și Intrarea Jos trebuie să fie diferite",
+      "cover_outputs_must_differ": "Ieșirea Sus și Ieșirea Jos trebuie să fie diferite",
+      "cover_requires_two_inputs": "Sunt necesare cel puțin 2 intrări disponibile pentru configurarea unui cover",
+      "cover_requires_two_outputs": "Sunt necesare cel puțin 2 ieșiri disponibile pentru configurarea unui cover",
+      "cannot_connect": "Salvarea configurării cover-ului a eșuat"
     }
   }
 }

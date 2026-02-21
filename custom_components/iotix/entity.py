@@ -24,9 +24,11 @@ class AdamEntity(CoordinatorEntity[AdamCoordinator]):
         
         self._pin = pin
         self._pin_config = pin_config
+        self._is_input = pin_config.get("isInput", pin_config.get("type") == "binary_sensor")
+        self._state_key = f"{'in' if self._is_input else 'out'}_{pin}"
         self._attr_name = pin_config.get("name", f"P{pin}")
         
-        # Unique ID based on MAC and pin
+        # Unique ID based on MAC and pin (legacy-compatible)
         self._attr_unique_id = f"{coordinator.mac}_pin_{pin}"
         
         # Device info
@@ -45,9 +47,9 @@ class AdamEntity(CoordinatorEntity[AdamCoordinator]):
         """Return if entity is available."""
         return (
             super().available
-            and self._pin in self.coordinator.data.get("pin_states", {})
+            and self._state_key in self.coordinator.data.get("pin_states", {})
         )
 
     def _get_pin_state(self):
         """Get current pin state from coordinator."""
-        return self.coordinator.data.get("pin_states", {}).get(self._pin, {})
+        return self.coordinator.data.get("pin_states", {}).get(self._state_key, {})

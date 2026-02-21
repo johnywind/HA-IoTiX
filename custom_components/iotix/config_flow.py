@@ -159,6 +159,8 @@ class AdamConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class AdamOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for IoTiX Adam."""
 
+    _max_covers = 4
+
     def __init__(self) -> None:
         """Initialize options flow."""
         super().__init__()
@@ -166,10 +168,16 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         self._inputs: list[dict] = []
         self._outputs: list[dict] = []
         self._pin_to_configure: int | None = None
+        self._cover_to_configure: int | None = None
         self._pin_type: str | None = None
         self._device_name: str | None = None
         self._is_input: bool = False
         self._input_config: dict[str, Any] = {}  # Store partial config between steps
+        self._cover_config: dict[str, Any] = {}
+        self._available_input_pins: list[int] = []
+        self._available_output_pins: list[int] = []
+        self._available_input_labels: dict[int, str] = {}
+        self._available_output_labels: dict[int, str] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -181,6 +189,10 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         """Fetch pin configuration from device."""
         host = self.config_entry.data[CONF_HOST]
         session = async_get_clientsession(self.hass)
+        self._available_input_pins = []
+        self._available_output_pins = []
+        self._available_input_labels = {}
+        self._available_output_labels = {}
         
         try:
             # Get device info
@@ -200,6 +212,33 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 if resp.status == 200:
                     data = await resp.json()
                     self._all_pins = data.get("pins", [])
+
+            # Get available physical pins from device
+            async with session.get(
+                f"http://{host}/api/pins/available",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    pins = data.get("pins", [])
+                    input_pins: list[int] = []
+                    output_pins: list[int] = []
+                    for pin in pins:
+                        pin_num = pin.get("pin")
+                        if not isinstance(pin_num, int) or pin_num < 0 or pin_num >= 16:
+                            continue
+                        pin_name = pin.get("label") or pin.get("name") or (
+                            f"Input {pin_num + 1}" if pin.get("isInput", False) else f"Output {pin_num + 1}"
+                        )
+                        if pin.get("isInput", False):
+                            input_pins.append(pin_num)
+                            self._available_input_labels[pin_num] = f"{pin_name} (IN{pin_num + 1})"
+                        else:
+                            output_pins.append(pin_num)
+                            self._available_output_labels[pin_num] = f"{pin_name} (OUT{pin_num + 1})"
+
+                    self._available_input_pins = sorted(set(input_pins))
+                    self._available_output_pins = sorted(set(output_pins))
         except:
             pass
 
@@ -218,16 +257,24 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_configure_inputs()
             elif action == "configure_outputs":
                 return await self.async_step_configure_outputs()
+            elif action == "configure_covers":
+                return await self.async_step_configure_covers()
             elif action == "done":
                 return self.async_create_entry(title="", data={})
 
         # Count configured pins
         inputs = [p for p in self._all_pins if p.get("type") == "binary_sensor"]
-        outputs = [p for p in self._all_pins if p.get("type") in ["light", "switch", "cover"]]
+        outputs = [
+            p
+            for p in self._all_pins
+            if p.get("pin", -1) < 16 and p.get("type") in ["light", "switch", "cover"]
+        ]
+        covers = [p for p in self._all_pins if p.get("type") == "cover" and p.get("pin", -1) >= 100]
         
         description = f"Controller: {self._device_name}\n"
         description += f"Configured Inputs: {len(inputs)}/16\n"
-        description += f"Configured Outputs: {len(outputs)}/16"
+        description += f"Configured Outputs: {len(outputs)}/16\n"
+        description += f"Configured Covers: {len(covers)}/{self._max_covers}"
 
         return self.async_show_form(
             step_id="main_menu",
@@ -235,8 +282,9 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required("action"): vol.In({
                         "device_name": "Set Controller Name",
-                        "configure_inputs": "Configure Inputs (16)",
-                        "configure_outputs": "Configure Outputs (16)",
+                        "configure_inputs": "Configure Inputs",
+                        "configure_outputs": "Configure Outputs",
+                        "configure_covers": "Configure Covers",
                         "done": "Done",
                     }),
                 }
@@ -365,6 +413,148 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={"status": summary},
         )
 
+    async def async_step_configure_covers(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure covers screen - show all 4 cover slots."""
+        if user_input is not None:
+            self._cover_to_configure = user_input["cover"]
+            return await self.async_step_edit_cover()
+
+        cover_options = {}
+        for i in range(self._max_covers):
+            cover_pin = next((p for p in self._all_pins if p.get("type") == "cover" and p.get("coverId") == i), None)
+            if cover_pin:
+                cover_options[i] = f"Cover {i+1}: {cover_pin.get('name', 'Unnamed')} [✓]"
+            else:
+                cover_options[i] = f"Cover {i+1}: Not configured"
+
+        summary = "Current Cover Configuration:\n\n"
+        for i in range(self._max_covers):
+            cover_pin = next((p for p in self._all_pins if p.get("type") == "cover" and p.get("coverId") == i), None)
+            if not cover_pin:
+                summary += f"Cover {i+1}: Not configured\n"
+                continue
+
+            summary += f"Cover {i+1}: {cover_pin.get('name', f'Cover {i+1}')}\n"
+            summary += f"  └─ Inputs: UP={cover_pin.get('inputUpPin', 255) + 1}, DOWN={cover_pin.get('inputDownPin', 255) + 1}\n"
+            summary += f"  └─ Outputs: UP={cover_pin.get('outputUpPin', 255) + 1}, DOWN={cover_pin.get('outputDownPin', 255) + 1}\n"
+            summary += f"  └─ Timers: UP={cover_pin.get('upTimeSec', 15)}s, DOWN={cover_pin.get('downTimeSec', 15)}s\n"
+
+        return self.async_show_form(
+            step_id="configure_covers",
+            data_schema=vol.Schema({
+                vol.Required("cover"): vol.In(cover_options),
+            }),
+            description_placeholders={"status": summary},
+        )
+
+    async def async_step_edit_cover(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure a specific cover."""
+        cover_id = self._cover_to_configure
+        if cover_id is None:
+            return await self.async_step_configure_covers()
+
+        errors: dict[str, str] = {}
+
+        cover_pin = next((p for p in self._all_pins if p.get("type") == "cover" and p.get("coverId") == cover_id), None)
+
+        available_inputs = sorted(set(i for i in self._available_input_pins if 0 <= i < 16))
+        available_outputs = sorted(set(i for i in self._available_output_pins if 0 <= i < 16))
+
+        if len(available_inputs) < 2:
+            errors["base"] = "cover_requires_two_inputs"
+        elif len(available_outputs) < 2:
+            errors["base"] = "cover_requires_two_outputs"
+
+        if user_input is not None:
+            if errors:
+                pass
+            elif user_input["input_up"] == user_input["input_down"]:
+                errors["base"] = "cover_inputs_must_differ"
+            elif user_input["output_up"] == user_input["output_down"]:
+                errors["base"] = "cover_outputs_must_differ"
+            else:
+                ok = await self._save_cover_config(
+                    cover_id=cover_id,
+                    name=user_input["name"],
+                    input_up=user_input["input_up"],
+                    input_down=user_input["input_down"],
+                    output_up=user_input["output_up"],
+                    output_down=user_input["output_down"],
+                    up_time=user_input["up_time_sec"],
+                    down_time=user_input["down_time_sec"],
+                    interlock=cover_pin.get("interlock", True) if cover_pin else True,
+                )
+                if ok:
+                    return await self.async_step_configure_covers()
+                errors["base"] = "cannot_connect"
+
+        if errors.get("base") in ["cover_requires_two_inputs", "cover_requires_two_outputs"]:
+            return self.async_show_form(
+                step_id="edit_cover",
+                data_schema=vol.Schema({}),
+                description_placeholders={
+                    "info": "Cover configuration requires at least 2 available inputs and 2 available outputs on the device."
+                },
+                errors=errors,
+            )
+
+        name_default = cover_pin.get("name", f"Cover {cover_id + 1}") if cover_pin else f"Cover {cover_id + 1}"
+        input_up_default = cover_pin.get("inputUpPin", available_inputs[0]) if cover_pin else available_inputs[0]
+        input_down_default = cover_pin.get("inputDownPin", available_inputs[1]) if cover_pin else available_inputs[1]
+        output_up_default = cover_pin.get("outputUpPin", available_outputs[0]) if cover_pin else available_outputs[0]
+        output_down_default = cover_pin.get("outputDownPin", available_outputs[1]) if cover_pin else available_outputs[1]
+        up_time_default = cover_pin.get("upTimeSec", 15) if cover_pin else 15
+        down_time_default = cover_pin.get("downTimeSec", 15) if cover_pin else 15
+
+        if input_up_default not in available_inputs:
+            input_up_default = available_inputs[0]
+        if input_down_default not in available_inputs or input_down_default == input_up_default:
+            input_down_default = next((pin for pin in available_inputs if pin != input_up_default), available_inputs[0])
+        if output_up_default not in available_outputs:
+            output_up_default = available_outputs[0]
+        if output_down_default not in available_outputs or output_down_default == output_up_default:
+            output_down_default = next((pin for pin in available_outputs if pin != output_up_default), available_outputs[0])
+
+        input_options = {
+            i: self._available_input_labels.get(i, f"Input {i+1}")
+            for i in available_inputs
+        }
+        output_options = {
+            i: self._available_output_labels.get(i, f"Output {i+1}")
+            for i in available_outputs
+        }
+
+        description = f"Configure Cover {cover_id + 1}\n\n"
+        description += "A cover uses 2 inputs, 2 outputs and 2 movement timers:\n"
+        description += "• Input UP / Output UP / UP timer\n"
+        description += "• Input DOWN / Output DOWN / DOWN timer\n"
+        description += "Pressing an input while moving will stop the cover.\n"
+        description += "Interlock prevents unsafe dual-direction activation.\n\n"
+        description += "Important: when you save, pin names will be automatically set to:\n"
+        description += "• {coverName}_input_up\n"
+        description += "• {coverName}_input_down\n"
+        description += "• {coverName}_output_up\n"
+        description += "• {coverName}_output_down"
+
+        return self.async_show_form(
+            step_id="edit_cover",
+            data_schema=vol.Schema({
+                vol.Required("name", default=name_default): str,
+                vol.Required("input_up", default=input_up_default): vol.In(input_options),
+                vol.Required("output_up", default=output_up_default): vol.In(output_options),
+                vol.Required("up_time_sec", default=up_time_default): vol.Coerce(int),
+                vol.Required("input_down", default=input_down_default): vol.In(input_options),
+                vol.Required("output_down", default=output_down_default): vol.In(output_options),
+                vol.Required("down_time_sec", default=down_time_default): vol.Coerce(int),
+            }),
+            description_placeholders={"info": description},
+            errors=errors,
+        )
+
     async def async_step_configure_all(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -414,6 +604,26 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         """Edit a specific input or output - Step 1: Name and Type."""
         pin_num = self._pin_to_configure
         is_input = self._is_input
+        pin_label = f"Input {pin_num + 1}" if is_input else f"Output {pin_num + 1}"
+
+        managed_cover = self._get_cover_for_pin(pin_num, is_input)
+        if managed_cover is not None:
+            cover_name = managed_cover.get("name", f"Cover {managed_cover.get('coverId', 0) + 1}")
+
+            if user_input is not None:
+                if is_input:
+                    return await self.async_step_configure_inputs()
+                return await self.async_step_configure_outputs()
+
+            description = f"{pin_label} is managed by cover '{cover_name}'.\n\n"
+            description += "To change this pin, edit the cover in Configure Covers."
+
+            return self.async_show_form(
+                step_id="edit_pin",
+                data_schema=vol.Schema({}),
+                description_placeholders={"info": description},
+                errors={"base": "pin_managed_by_cover"},
+            )
         
         if user_input is not None:
             # Store config for next step
@@ -482,8 +692,6 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             if not current_type:
                 current_type = "light"
 
-        pin_label = f"Input {pin_num + 1}" if is_input else f"Output {pin_num + 1}"
-        
         # Build description
         if is_input:
             description = f"Configure {pin_label}\n\n"
@@ -503,6 +711,21 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema(schema_dict),
             description_placeholders={"info": description},
         )
+
+    def _get_cover_for_pin(self, pin_num: int, is_input: bool) -> dict[str, Any] | None:
+        """Return cover config if pin is managed by a cover."""
+        for pin_config in self._all_pins:
+            if pin_config.get("type") != "cover":
+                continue
+            if pin_config.get("pin", -1) < 100:
+                continue
+
+            if is_input and pin_num in [pin_config.get("inputUpPin"), pin_config.get("inputDownPin")]:
+                return pin_config
+            if not is_input and pin_num in [pin_config.get("outputUpPin"), pin_config.get("outputDownPin")]:
+                return pin_config
+
+        return None
     
     async def async_step_button_mode(
         self, user_input: dict[str, Any] | None = None
@@ -753,6 +976,49 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                     _LOGGER.warning("Failed to set push button triggers")
         except Exception as err:
             _LOGGER.warning("Error setting push button triggers: %s", err)
+
+    async def _save_cover_config(
+        self,
+        cover_id: int,
+        name: str,
+        input_up: int,
+        input_down: int,
+        output_up: int,
+        output_down: int,
+        up_time: int,
+        down_time: int,
+        interlock: bool,
+    ) -> bool:
+        """Save cover configuration to device."""
+        host = self.config_entry.data[CONF_HOST]
+        session = async_get_clientsession(self.hass)
+
+        payload = {
+            "coverId": cover_id,
+            "name": name,
+            "inputUpPin": input_up,
+            "inputDownPin": input_down,
+            "outputUpPin": output_up,
+            "outputDownPin": output_down,
+            "upTimeSec": max(1, up_time),
+            "downTimeSec": max(1, down_time),
+            "interlock": interlock,
+        }
+
+        try:
+            async with session.post(
+                f"http://{host}/api/cover/configure",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    await self._fetch_pin_data()
+                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                    return True
+        except Exception as err:
+            _LOGGER.error("Error configuring cover %s: %s", cover_id, err)
+
+        return False
 
     async def async_step_device_name(
         self, user_input: dict[str, Any] | None = None

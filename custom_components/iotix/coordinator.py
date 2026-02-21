@@ -22,6 +22,10 @@ from .const import (
     API_PIN_STATE,
     API_INPUT_TRIGGERS,
     API_BUTTON_EVENTS,
+    API_COVERS_CONFIG,
+    API_COVERS_STATE,
+    API_COVER_CONTROL,
+    API_COVER_CONFIGURE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,11 +93,60 @@ class AdamCoordinator(DataUpdateCoordinator):
                     raise UpdateFailed(f"Error fetching pin config: {resp.status}")
                 pins_config = await resp.json()
 
+            raw_pins_config = pins_config.get("pins", [])
+
+            # Get configured covers and merge as virtual cover entities (pin = 100 + coverId)
+            covers_config: list[dict[str, Any]] = []
+            try:
+                async with self.session.get(
+                    f"{self.base_url}{API_COVERS_CONFIG}",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        covers_data = await resp.json()
+                        covers_config = covers_data.get("covers", [])
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.debug("Error fetching covers config: %s", err)
+
+            existing_cover_ids = {
+                pin_config.get("coverId", max(pin_config.get("pin", 100) - 100, 0))
+                for pin_config in raw_pins_config
+                if pin_config.get("type") == "cover"
+            }
+
+            merged_pins_config = list(raw_pins_config)
+            for cover in covers_config:
+                cover_id = cover.get("coverId")
+                if cover_id is None or cover_id in existing_cover_ids:
+                    continue
+
+                merged_pins_config.append(
+                    {
+                        "pin": 100 + int(cover_id),
+                        "type": "cover",
+                        "name": cover.get("name", f"Cover {int(cover_id) + 1}"),
+                        "isInput": False,
+                        "coverId": int(cover_id),
+                        "inputUpPin": cover.get("inputUpPin"),
+                        "inputDownPin": cover.get("inputDownPin"),
+                        "outputUpPin": cover.get("outputUpPin"),
+                        "outputDownPin": cover.get("outputDownPin"),
+                        "upTimeSec": cover.get("upTimeSec"),
+                        "downTimeSec": cover.get("downTimeSec"),
+                        "interlock": cover.get("interlock", True),
+                        "moving": cover.get("moving", False),
+                        "direction": cover.get("direction", "stopped"),
+                    }
+                )
+
             # Get state for each configured pin
             pin_states = {}
-            for pin_config in pins_config.get("pins", []):
+            for pin_config in merged_pins_config:
                 pin = pin_config["pin"]
+                if pin_config.get("type") == "cover" or pin >= 100:
+                    continue
                 is_input = pin_config.get("isInput", pin_config.get("type") == "binary_sensor")
+                state_key = f"{'in' if is_input else 'out'}_{pin}"
                 try:
                     async with self.session.get(
                         f"{self.base_url}{API_PIN_STATE}?pin={pin}&isInput={1 if is_input else 0}",
@@ -101,10 +154,25 @@ class AdamCoordinator(DataUpdateCoordinator):
                     ) as resp:
                         if resp.status == 200:
                             state_data = await resp.json()
-                            pin_states[pin] = state_data
+                            pin_states[state_key] = state_data
                 except (aiohttp.ClientError, TimeoutError) as err:
                     _LOGGER.warning("Error fetching state for pin %s: %s", pin, err)
                     continue
+
+            covers_state: dict[int, dict[str, Any]] = {}
+            try:
+                async with self.session.get(
+                    f"{self.base_url}{API_COVERS_STATE}",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        covers_data = await resp.json()
+                        for cover_state in covers_data.get("covers", []):
+                            cover_id = cover_state.get("coverId")
+                            if cover_id is not None:
+                                covers_state[cover_id] = cover_state
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.debug("Error fetching cover state: %s", err)
 
             # Get input trigger mappings
             triggers = {}
@@ -137,10 +205,12 @@ class AdamCoordinator(DataUpdateCoordinator):
 
             return {
                 "device_info": device_info,
-                "pins_config": pins_config.get("pins", []),
+                "pins_config": merged_pins_config,
                 "pin_states": pin_states,
                 "triggers": triggers,
                 "button_events": button_events,
+                "covers_state": covers_state,
+                "covers_config": covers_config,
             }
 
         except (aiohttp.ClientError, TimeoutError) as err:
@@ -196,4 +266,64 @@ class AdamCoordinator(DataUpdateCoordinator):
                 return False
         except (aiohttp.ClientError, TimeoutError) as err:
             _LOGGER.error("Error configuring pin %s: %s", pin, err)
+            return False
+
+    async def async_cover_command(self, cover_id: int, command: str) -> bool:
+        """Send a command to a cover."""
+        payload = {
+            "coverId": cover_id,
+            "command": command,
+        }
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}{API_COVER_CONTROL}",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    await self.async_request_refresh()
+                    return True
+                return False
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.error("Error sending cover command %s for cover %s: %s", command, cover_id, err)
+            return False
+
+    async def async_configure_cover(
+        self,
+        cover_id: int,
+        name: str,
+        input_up_pin: int,
+        input_down_pin: int,
+        output_up_pin: int,
+        output_down_pin: int,
+        up_time_sec: int,
+        down_time_sec: int,
+        interlock: bool,
+    ) -> bool:
+        """Configure a cover on the device."""
+        payload = {
+            "coverId": cover_id,
+            "name": name,
+            "inputUpPin": input_up_pin,
+            "inputDownPin": input_down_pin,
+            "outputUpPin": output_up_pin,
+            "outputDownPin": output_down_pin,
+            "upTimeSec": up_time_sec,
+            "downTimeSec": down_time_sec,
+            "interlock": interlock,
+        }
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}{API_COVER_CONFIGURE}",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    await self.async_request_refresh()
+                    return True
+                return False
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.error("Error configuring cover %s: %s", cover_id, err)
             return False

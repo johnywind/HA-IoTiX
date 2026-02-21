@@ -56,6 +56,26 @@
           "output": "Ieșire"
         }
       },
+      "configure_covers": {
+        "title": "Configure Covers",
+        "description": "{status}",
+        "data": {
+          "cover": "Cover"
+        }
+      },
+      "edit_cover": {
+        "title": "Configure Cover",
+        "description": "{info}",
+        "data": {
+          "name": "Cover Name",
+          "input_up": "Input UP",
+          "output_up": "Output UP",
+          "up_time_sec": "Timer UP",
+          "input_down": "Input DOWN",
+          "output_down": "Output DOWN",
+          "down_time_sec": "Timer DOWN"
+        }
+      },
       "edit_pin": {
         "title": "Configure Pin",
         "description": "{info}",
@@ -87,6 +107,14 @@
           "double_press_output": "Double Press Action"
         }
       }
+    },
+    "error": {
+      "pin_managed_by_cover": "This pin is managed by a cover and cannot be edited here",
+      "cover_inputs_must_differ": "Input Up and Input Down must be different",
+      "cover_outputs_must_differ": "Output Up and Output Down must be different",
+      "cover_requires_two_inputs": "At least 2 available inputs are required to configure a cover",
+      "cover_requires_two_outputs": "At least 2 available outputs are required to configure a cover",
+      "cannot_connect": "Failed to save cover configuration"
     }
   }
 }
