@@ -105,6 +105,50 @@
           "long_press_output": "Acțiune Apăsare Lungă",
           "double_press_output": "Acțiune Apăsare Dublă"
         }
+      },
+      "configure_xr8": {
+        "title": "Configurare Module Releu XR8",
+        "description": "{info}",
+        "data": {
+          "action": "Acțiune"
+        }
+      },
+      "add_xr8_module": {
+        "title": "Adaugă Modul XR8 {module_id}",
+        "description": "Configurează adresa I2C (0x20-0x27) și numele releelor",
+        "data": {
+          "address": "Adresă I2C",
+          "relay_0": "Nume Releu 1",
+          "relay_1": "Nume Releu 2",
+          "relay_2": "Nume Releu 3",
+          "relay_3": "Nume Releu 4",
+          "relay_4": "Nume Releu 5",
+          "relay_5": "Nume Releu 6",
+          "relay_6": "Nume Releu 7",
+          "relay_7": "Nume Releu 8"
+        }
+      },
+      "edit_xr8_module": {
+        "title": "Editează Modul XR8 {module_id}",
+        "description": "Actualizează adresa I2C sau numele releelor",
+        "data": {
+          "address": "Adresă I2C",
+          "relay_0": "Nume Releu 1",
+          "relay_1": "Nume Releu 2",
+          "relay_2": "Nume Releu 3",
+          "relay_3": "Nume Releu 4",
+          "relay_4": "Nume Releu 5",
+          "relay_5": "Nume Releu 6",
+          "relay_6": "Nume Releu 7",
+          "relay_7": "Nume Releu 8"
+        }
+      },
+      "delete_xr8_module": {
+        "title": "Șterge Modul XR8 {module_id}",
+        "description": "Ești sigur că vrei să ștergi modulul de la adresa {address}?",
+        "data": {
+          "confirm": "Confirmă Ștergerea"
+        }
       }
     },
     "error": {
@@ -113,7 +157,10 @@
       "cover_outputs_must_differ": "Ieșirea Sus și Ieșirea Jos trebuie să fie diferite",
       "cover_requires_two_inputs": "Sunt necesare cel puțin 2 intrări disponibile pentru configurarea unui cover",
       "cover_requires_two_outputs": "Sunt necesare cel puțin 2 ieșiri disponibile pentru configurarea unui cover",
-      "cannot_connect": "Salvarea configurării cover-ului a eșuat"
+      "cannot_connect": "Salvarea configurării a eșuat",
+      "invalid_address_range": "Adresa trebuie să fie între 0x20 și 0x27",
+      "invalid_address_format": "Format adresă invalid. Folosește hex (0x20) sau zecimal (32)",
+      "address_in_use": "Această adresă este deja folosită de alt modul"
     }
   }
 }

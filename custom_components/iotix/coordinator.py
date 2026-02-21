@@ -203,6 +203,19 @@ class AdamCoordinator(DataUpdateCoordinator):
             # Trigger button event callbacks
             self._trigger_button_events(button_events)
 
+            # Fetch XR8 relay modules
+            xr8_modules = []
+            try:
+                async with self.session.get(
+                    f"{self.base_url}/api/xr8/list",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        xr8_data = await resp.json()
+                        xr8_modules = xr8_data.get("modules", [])
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.debug("Error fetching XR8 modules: %s", err)
+
             return {
                 "device_info": device_info,
                 "pins_config": merged_pins_config,
@@ -211,6 +224,7 @@ class AdamCoordinator(DataUpdateCoordinator):
                 "button_events": button_events,
                 "covers_state": covers_state,
                 "covers_config": covers_config,
+                "xr8_modules": xr8_modules,
             }
 
         except (aiohttp.ClientError, TimeoutError) as err:
@@ -326,4 +340,35 @@ class AdamCoordinator(DataUpdateCoordinator):
                 return False
         except (aiohttp.ClientError, TimeoutError) as err:
             _LOGGER.error("Error configuring cover %s: %s", cover_id, err)
+            return False
+
+    async def async_configure_xr8_module(
+        self,
+        module_id: int,
+        address: int,
+        configured: bool,
+        relay_names: list[str] | None = None,
+    ) -> bool:
+        """Configure an XR8 module on the device."""
+        payload = {
+            "moduleId": module_id,
+            "address": address,
+            "configured": configured,
+        }
+
+        if relay_names and len(relay_names) == 8:
+            payload["relays"] = [{"name": name} for name in relay_names]
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/xr8/configure",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    await self.async_request_refresh()
+                    return True
+                return False
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.error("Error configuring XR8 module %s: %s", module_id, err)
             return False

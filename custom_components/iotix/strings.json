@@ -106,6 +106,50 @@
           "long_press_output": "Long Press Action",
           "double_press_output": "Double Press Action"
         }
+      },
+      "configure_xr8": {
+        "title": "Configure XR8 Relay Modules",
+        "description": "{info}",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "add_xr8_module": {
+        "title": "Add XR8 Module {module_id}",
+        "description": "Configure I2C address (0x20-0x27) and relay names",
+        "data": {
+          "address": "I2C Address",
+          "relay_0": "Relay 1 Name",
+          "relay_1": "Relay 2 Name",
+          "relay_2": "Relay 3 Name",
+          "relay_3": "Relay 4 Name",
+          "relay_4": "Relay 5 Name",
+          "relay_5": "Relay 6 Name",
+          "relay_6": "Relay 7 Name",
+          "relay_7": "Relay 8 Name"
+        }
+      },
+      "edit_xr8_module": {
+        "title": "Edit XR8 Module {module_id}",
+        "description": "Update I2C address or relay names",
+        "data": {
+          "address": "I2C Address",
+          "relay_0": "Relay 1 Name",
+          "relay_1": "Relay 2 Name",
+          "relay_2": "Relay 3 Name",
+          "relay_3": "Relay 4 Name",
+          "relay_4": "Relay 5 Name",
+          "relay_5": "Relay 6 Name",
+          "relay_6": "Relay 7 Name",
+          "relay_7": "Relay 8 Name"
+        }
+      },
+      "delete_xr8_module": {
+        "title": "Delete XR8 Module {module_id}",
+        "description": "Are you sure you want to delete module at address {address}?",
+        "data": {
+          "confirm": "Confirm Deletion"
+        }
       }
     },
     "error": {
@@ -114,7 +158,10 @@
       "cover_outputs_must_differ": "Output Up and Output Down must be different",
       "cover_requires_two_inputs": "At least 2 available inputs are required to configure a cover",
       "cover_requires_two_outputs": "At least 2 available outputs are required to configure a cover",
-      "cannot_connect": "Failed to save cover configuration"
+      "cannot_connect": "Failed to save configuration",
+      "invalid_address_range": "Address must be between 0x20 and 0x27",
+      "invalid_address_format": "Invalid address format. Use hex (0x20) or decimal (32)",
+      "address_in_use": "This address is already used by another module"
     }
   }
 }

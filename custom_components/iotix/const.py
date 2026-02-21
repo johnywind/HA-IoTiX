@@ -53,3 +53,9 @@ API_COVERS_CONFIG: Final = "/api/covers/config"
 API_COVERS_STATE: Final = "/api/covers/state"
 API_COVER_CONFIGURE: Final = "/api/cover/configure"
 API_COVER_CONTROL: Final = "/api/cover/control"
+
+# XR8 API endpoints
+API_XR8_LIST: Final = "/api/xr8/list"
+API_XR8_CONFIGURE: Final = "/api/xr8/configure"
+API_XR8_RELAY_STATE: Final = "/api/xr8/relay/state"
+API_XR8_RELAY_CONTROL: Final = "/api/xr8/relay/control"

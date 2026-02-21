@@ -239,6 +239,26 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
 
                     self._available_input_pins = sorted(set(input_pins))
                     self._available_output_pins = sorted(set(output_pins))
+            
+            # Get XR8 modules and add relays as virtual outputs
+            async with session.get(
+                f"http://{host}/api/xr8/list",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    xr8_modules = data.get("modules", [])
+                    for module in xr8_modules:
+                        if not module.get("configured", False):
+                            continue
+                        module_id = module.get("id")
+                        for relay in module.get("relays", []):
+                            relay_id = relay.get("id")
+                            relay_name = relay.get("name", f"XR8_{module_id + 1}_Relay_{relay_id + 1}")
+                            # Virtual pin: 1000 + (moduleId * 100) + relayId
+                            virtual_pin = 1000 + (module_id * 100) + relay_id
+                            self._available_output_pins.append(virtual_pin)
+                            self._available_output_labels[virtual_pin] = f"{relay_name} (XR8-{module_id + 1}.{relay_id + 1})"
         except:
             pass
 
@@ -259,6 +279,8 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_configure_outputs()
             elif action == "configure_covers":
                 return await self.async_step_configure_covers()
+            elif action == "configure_xr8":
+                return await self.async_step_configure_xr8()
             elif action == "done":
                 return self.async_create_entry(title="", data={})
 
@@ -271,10 +293,16 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
         ]
         covers = [p for p in self._all_pins if p.get("type") == "cover" and p.get("pin", -1) >= 100]
         
+        # Get XR8 modules count
+        coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+        xr8_modules = coordinator.data.get("xr8_modules", [])
+        configured_xr8 = len([m for m in xr8_modules if m.get("configured", False)])
+        
         description = f"Controller: {self._device_name}\n"
         description += f"Configured Inputs: {len(inputs)}/16\n"
         description += f"Configured Outputs: {len(outputs)}/16\n"
-        description += f"Configured Covers: {len(covers)}/{self._max_covers}"
+        description += f"Configured Covers: {len(covers)}/{self._max_covers}\n"
+        description += f"Configured XR8 Modules: {configured_xr8}/8"
 
         return self.async_show_form(
             step_id="main_menu",
@@ -285,6 +313,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                         "configure_inputs": "Configure Inputs",
                         "configure_outputs": "Configure Outputs",
                         "configure_covers": "Configure Covers",
+                        "configure_xr8": "Configure XR8 Relay Modules",
                         "done": "Done",
                     }),
                 }
@@ -776,8 +805,10 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             self._input_config["trigger_output"] = user_input["trigger_output"]
             return await self._save_pin_config(self._input_config)
         
-        # Build list of ALL outputs (any can be selected)
+        # Build list of ALL outputs (physical + XR8 relays)
         output_options = {255: "None (No trigger)"}
+        
+        # Add physical outputs (0-15)
         for i in range(16):
             output_config = next((p for p in self._all_pins if p.get("pin") == i and not p.get("isInput", False)), None)
             if output_config:
@@ -785,6 +816,11 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 output_options[i] = f"Output {i+1}: {output_config.get('name', 'Unnamed')} ({pin_type})"
             else:
                 output_options[i] = f"Output {i+1}: Not configured"
+        
+        # Add XR8 relay outputs
+        for pin in self._available_output_pins:
+            if pin >= 1000:  # XR8 virtual pins
+                output_options[pin] = self._available_output_labels.get(pin, f"XR8 Relay {pin}")
         
         # Get current trigger (default to same pin number)
         pin_num = self._pin_to_configure
@@ -824,8 +860,10 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             
             return await self._save_pin_config(self._input_config)
         
-        # Build list of ALL outputs (any can be selected, even duplicates)
+        # Build list of ALL outputs (physical + XR8 relays)
         output_options = {255: "None (No action)"}
+        
+        # Add physical outputs (0-15)
         for i in range(16):
             output_config = next((p for p in self._all_pins if p.get("pin") == i and not p.get("isInput", False)), None)
             if output_config:
@@ -833,6 +871,11 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 output_options[i] = f"Output {i+1}: {output_config.get('name', 'Unnamed')} ({pin_type})"
             else:
                 output_options[i] = f"Output {i+1}: Not configured"
+        
+        # Add XR8 relay outputs
+        for pin in self._available_output_pins:
+            if pin >= 1000:  # XR8 virtual pins
+                output_options[pin] = self._available_output_labels.get(pin, f"XR8 Relay {pin}")
         
         # Defaults (all can be different or the same)
         pin_num = self._pin_to_configure
@@ -1019,6 +1062,296 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
             _LOGGER.error("Error configuring cover %s: %s", cover_id, err)
 
         return False
+
+    async def async_step_configure_xr8(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure XR8 modules screen."""
+        coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+        
+        # Refresh coordinator data to get latest module list
+        await coordinator.async_refresh()
+        
+        xr8_modules = coordinator.data.get("xr8_modules", [])
+        
+        if user_input is not None:
+            action = user_input.get("action")
+            
+            if action == "back":
+                return await self.async_step_main_menu()
+            elif action.startswith("add_"):
+                # Find first unconfigured module slot
+                for i in range(8):
+                    module = next((m for m in xr8_modules if m.get("id") == i), None)
+                    if not module or not module.get("configured", False):
+                        self._cover_to_configure = i  # Reuse this variable for module_id
+                        return await self.async_step_add_xr8_module()
+                return await self.async_step_configure_xr8()
+            elif action.startswith("edit_"):
+                module_id = int(action.split("_")[1])
+                self._cover_to_configure = module_id
+                return await self.async_step_edit_xr8_module()
+            elif action.startswith("delete_"):
+                module_id = int(action.split("_")[1])
+                self._cover_to_configure = module_id
+                return await self.async_step_delete_xr8_module()
+        
+        # Build module list with action options
+        module_actions = {}
+        
+        # Check if we can add more modules
+        configured_count = len([m for m in xr8_modules if m.get("configured", False)])
+        if configured_count < 8:
+            module_actions["add_module"] = "➕ Add New XR8 Module"
+        
+        # Add edit/delete options for configured modules
+        for module in xr8_modules:
+            if module.get("configured", False):
+                module_id = module.get("id")
+                address = module.get("address", 0x20)
+                relay_count = len(module.get("relays", []))
+                module_actions[f"edit_{module_id}"] = f"Edit XR8 Module {module_id + 1} (0x{address:02X}) - {relay_count} relays"
+                module_actions[f"delete_{module_id}"] = f"Delete Module {module_id + 1}"
+        
+        module_actions["back"] = "⬅️ Back to Main Menu"
+        
+        description = f"XR8 Relay Extension Modules\n"
+        description += f"Configured: {configured_count}/8\n\n"
+        for module in xr8_modules:
+            if module.get("configured", False):
+                module_id = module.get("id")
+                address = module.get("address", 0x20)
+                description += f"Module {module_id + 1}: Address 0x{address:02X}\n"
+                for i, relay in enumerate(module.get("relays", [])):
+                    relay_name = relay.get("name", f"Relay {i + 1}")
+                    description += f"  • Relay {i + 1}: {relay_name}\n"
+        
+        return self.async_show_form(
+            step_id="configure_xr8",
+            data_schema=vol.Schema({
+                vol.Required("action"): vol.In(module_actions),
+            }),
+            description_placeholders={"info": description},
+        )
+
+    async def async_step_add_xr8_module(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Add a new XR8 module."""
+        module_id = self._cover_to_configure
+        
+        if user_input is not None:
+            address_str = user_input.get("address", "0x20")
+            try:
+                # Parse hex address
+                if address_str.startswith("0x") or address_str.startswith("0X"):
+                    address = int(address_str, 16)
+                else:
+                    address = int(address_str)
+                
+                if address < 0x20 or address > 0x27:
+                    return self.async_show_form(
+                        step_id="add_xr8_module",
+                        data_schema=self._build_xr8_module_schema(0x20),
+                        errors={"address": "invalid_address_range"},
+                        description_placeholders={"module_id": str(module_id + 1)},
+                    )
+            except ValueError:
+                return self.async_show_form(
+                    step_id="add_xr8_module",
+                    data_schema=self._build_xr8_module_schema(0x20),
+                    errors={"address": "invalid_address_format"},
+                    description_placeholders={"module_id": str(module_id + 1)},
+                )
+            
+            # Check if address is already in use
+            coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+            xr8_modules = coordinator.data.get("xr8_modules", [])
+            for module in xr8_modules:
+                if module.get("configured", False) and module.get("address") == address and module.get("id") != module_id:
+                    return self.async_show_form(
+                        step_id="add_xr8_module",
+                        data_schema=self._build_xr8_module_schema(0x20),
+                        errors={"address": "address_in_use"},
+                        description_placeholders={"module_id": str(module_id + 1)},
+                    )
+            
+            # Get relay names
+            relay_names = []
+            for i in range(8):
+                relay_name = user_input.get(f"relay_{i}", f"XR8_{module_id + 1}_Relay_{i + 1}")
+                relay_names.append(relay_name)
+            
+            # Configure module
+            success = await coordinator.async_configure_xr8_module(
+                module_id=module_id,
+                address=address,
+                configured=True,
+                relay_names=relay_names,
+            )
+            
+            if success:
+                # Reload integration to create new entities
+                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                return await self.async_step_configure_xr8()
+            else:
+                return self.async_show_form(
+                    step_id="add_xr8_module",
+                    data_schema=self._build_xr8_module_schema(0x20),
+                    errors={"base": "cannot_connect"},
+                    description_placeholders={"module_id": str(module_id + 1)},
+                )
+        
+        return self.async_show_form(
+            step_id="add_xr8_module",
+            data_schema=self._build_xr8_module_schema(0x20),
+            description_placeholders={"module_id": str(module_id + 1)},
+        )
+
+    async def async_step_edit_xr8_module(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Edit an existing XR8 module."""
+        module_id = self._cover_to_configure
+        coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+        xr8_modules = coordinator.data.get("xr8_modules", [])
+        module = next((m for m in xr8_modules if m.get("id") == module_id), None)
+        
+        if not module or not module.get("configured", False):
+            return await self.async_step_configure_xr8()
+        
+        if user_input is not None:
+            address_str = user_input.get("address", f"0x{module.get('address', 0x20):02X}")
+            try:
+                # Parse hex address
+                if address_str.startswith("0x") or address_str.startswith("0X"):
+                    address = int(address_str, 16)
+                else:
+                    address = int(address_str)
+                
+                if address < 0x20 or address > 0x27:
+                    return self.async_show_form(
+                        step_id="edit_xr8_module",
+                        data_schema=self._build_xr8_module_schema(
+                            module.get("address", 0x20),
+                            module.get("relays", [])
+                        ),
+                        errors={"address": "invalid_address_range"},
+                        description_placeholders={"module_id": str(module_id + 1)},
+                    )
+            except ValueError:
+                return self.async_show_form(
+                    step_id="edit_xr8_module",
+                    data_schema=self._build_xr8_module_schema(
+                        module.get("address", 0x20),
+                        module.get("relays", [])
+                    ),
+                    errors={"address": "invalid_address_format"},
+                    description_placeholders={"module_id": str(module_id + 1)},
+                )
+            
+            # Check if address is already in use by another module
+            for m in xr8_modules:
+                if m.get("configured", False) and m.get("address") == address and m.get("id") != module_id:
+                    return self.async_show_form(
+                        step_id="edit_xr8_module",
+                        data_schema=self._build_xr8_module_schema(
+                            module.get("address", 0x20),
+                            module.get("relays", [])
+                        ),
+                        errors={"address": "address_in_use"},
+                        description_placeholders={"module_id": str(module_id + 1)},
+                    )
+            
+            # Get relay names
+            relay_names = []
+            for i in range(8):
+                relay_name = user_input.get(f"relay_{i}", f"XR8_{module_id + 1}_Relay_{i + 1}")
+                relay_names.append(relay_name)
+            
+            # Configure module
+            success = await coordinator.async_configure_xr8_module(
+                module_id=module_id,
+                address=address,
+                configured=True,
+                relay_names=relay_names,
+            )
+            
+            if success:
+                return await self.async_step_configure_xr8()
+            else:
+                return self.async_show_form(
+                    step_id="edit_xr8_module",
+                    data_schema=self._build_xr8_module_schema(
+                        module.get("address", 0x20),
+                        module.get("relays", [])
+                    ),
+                    errors={"base": "cannot_connect"},
+                    description_placeholders={"module_id": str(module_id + 1)},
+                )
+        
+        return self.async_show_form(
+            step_id="edit_xr8_module",
+            data_schema=self._build_xr8_module_schema(
+                module.get("address", 0x20),
+                module.get("relays", [])
+            ),
+            description_placeholders={"module_id": str(module_id + 1)},
+        )
+
+    async def async_step_delete_xr8_module(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Delete an XR8 module."""
+        module_id = self._cover_to_configure
+        coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+        xr8_modules = coordinator.data.get("xr8_modules", [])
+        module = next((m for m in xr8_modules if m.get("id") == module_id), None)
+        
+        if not module or not module.get("configured", False):
+            return await self.async_step_configure_xr8()
+        
+        if user_input is not None:
+            if user_input.get("confirm"):
+                # Delete module by setting configured = False
+                success = await coordinator.async_configure_xr8_module(
+                    module_id=module_id,
+                    address=module.get("address", 0x20),
+                    configured=False,
+                    relay_names=None,
+                )
+                
+                if success:
+                    # Reload integration to remove entities
+                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            
+            return await self.async_step_configure_xr8()
+        
+        address = module.get("address", 0x20)
+        return self.async_show_form(
+            step_id="delete_xr8_module",
+            data_schema=vol.Schema({
+                vol.Required("confirm", default=False): bool,
+            }),
+            description_placeholders={
+                "module_id": str(module_id + 1),
+                "address": f"0x{address:02X}",
+            },
+        )
+
+    def _build_xr8_module_schema(self, default_address: int, relays: list | None = None):
+        """Build schema for XR8 module configuration."""
+        schema = {
+            vol.Required("address", default=f"0x{default_address:02X}"): str,
+        }
+        
+        for i in range(8):
+            default_name = f"Relay {i + 1}"
+            if relays and i < len(relays):
+                default_name = relays[i].get("name", default_name)
+            schema[vol.Required(f"relay_{i}", default=default_name)] = str
+        
+        return vol.Schema(schema)
 
     async def async_step_device_name(
         self, user_input: dict[str, Any] | None = None
