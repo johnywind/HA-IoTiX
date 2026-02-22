@@ -281,6 +281,8 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_configure_covers()
             elif action == "configure_xr8":
                 return await self.async_step_configure_xr8()
+            elif action == "update_firmware":
+                return await self.async_step_update_firmware()
             elif action == "done":
                 return self.async_create_entry(title="", data={})
 
@@ -314,6 +316,7 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                         "configure_outputs": "Configure Outputs",
                         "configure_covers": "Configure Covers",
                         "configure_xr8": "Configure XR8 Relay Modules",
+                        "update_firmware": "Update Firmware",
                         "done": "Done",
                     }),
                 }
@@ -1382,3 +1385,139 @@ class AdamOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("name", default=default_name): str,
             }),
         )
+
+    async def async_step_update_firmware(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Firmware update instructions."""
+        if user_input is not None:
+            if user_input.get("action") == "back":
+                return await self.async_step_main_menu()
+            elif user_input.get("action") == "upload":
+                firmware_url = user_input.get("firmware_url", "").strip()
+                if firmware_url:
+                    return await self.async_step_upload_firmware_url(firmware_url)
+                else:
+                    return self.async_show_form(
+                        step_id="update_firmware",
+                        data_schema=vol.Schema({
+                            vol.Required("action"): vol.In({
+                                "upload": "Upload from URL", 
+                                "back": "Back to Menu"
+                            }),
+                            vol.Optional("firmware_url"): str,
+                        }),
+                        errors={"base": "url_required"},
+                        description_placeholders={
+                            "host": self.config_entry.data[CONF_HOST],
+                            "instructions": self._get_firmware_instructions()
+                        },
+                    )
+
+        return self.async_show_form(
+            step_id="update_firmware",
+            data_schema=vol.Schema({
+                vol.Required("action"): vol.In({
+                    "upload": "Upload from URL",
+                    "back": "Back to Menu"
+                }),
+                vol.Optional("firmware_url"): str,
+            }),
+            description_placeholders={
+                "host": self.config_entry.data[CONF_HOST],
+                "instructions": self._get_firmware_instructions()
+            },
+        )
+    
+    def _get_firmware_instructions(self) -> str:
+        """Get firmware update instructions."""
+        host = self.config_entry.data[CONF_HOST]
+        return (
+            f"Device IP: {host}\\n\\n"
+            f"Method 1: Upload firmware.bin via command line:\\n"
+            f"curl -X POST -F 'file=@firmware.bin' http://{host}/api/update\\n\\n"
+            f"Method 2: Enter a URL below to download and flash firmware\\n\\n"
+            f"⚠️ Warning: Device will reboot after successful update"
+        )
+    
+    async def async_step_upload_firmware_url(
+        self, firmware_url: str
+    ) -> FlowResult:
+        """Upload firmware from URL."""
+        host = self.config_entry.data[CONF_HOST]
+        session = async_get_clientsession(self.hass)
+        
+        try:
+            # Download firmware from URL
+            _LOGGER.info(f"Downloading firmware from {firmware_url}")
+            async with session.get(
+                firmware_url,
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                if resp.status != 200:
+                    return self.async_show_form(
+                        step_id="update_firmware",
+                        data_schema=vol.Schema({
+                            vol.Required("action"): vol.In({
+                                "upload": "Upload from URL",
+                                "back": "Back to Menu"
+                            }),
+                            vol.Optional("firmware_url"): str,
+                        }),
+                        errors={"base": "download_failed"},
+                        description_placeholders={
+                            "host": host,
+                            "instructions": self._get_firmware_instructions()
+                        },
+                    )
+                
+                firmware_data = await resp.read()
+                _LOGGER.info(f"Downloaded {len(firmware_data)} bytes")
+            
+            # Upload to device
+            _LOGGER.info(f"Uploading firmware to device at {host}")
+            data = aiohttp.FormData()
+            data.add_field('file', firmware_data, filename='firmware.bin', content_type='application/octet-stream')
+            
+            async with session.post(
+                f"http://{host}/api/update",
+                data=data,
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                if resp.status == 200:
+                    _LOGGER.info("Firmware uploaded successfully, device rebooting")
+                    return self.async_show_form(
+                        step_id="update_firmware_success",
+                        data_schema=vol.Schema({}),
+                        description_placeholders={
+                            "message": "Firmware updated successfully! Device is rebooting. Please wait 30 seconds before accessing it."
+                        },
+                    )
+                else:
+                    error_text = await resp.text()
+                    _LOGGER.error(f"Firmware upload failed: {error_text}")
+                    raise Exception(f"Upload failed: {error_text}")
+                    
+        except Exception as e:
+            _LOGGER.error(f"Firmware update failed: {str(e)}")
+            return self.async_show_form(
+                step_id="update_firmware",
+                data_schema=vol.Schema({
+                    vol.Required("action"): vol.In({
+                        "upload": "Upload from URL",
+                        "back": "Back to Menu"
+                    }),
+                    vol.Optional("firmware_url"): str,
+                }),
+                errors={"base": "update_failed"},
+                description_placeholders={
+                    "host": host,
+                    "instructions": self._get_firmware_instructions()
+                },
+            )
+    
+    async def async_step_update_firmware_success(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Show firmware update success message."""
+        return self.async_create_entry(title="", data={})

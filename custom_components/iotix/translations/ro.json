@@ -149,6 +149,18 @@
         "data": {
           "confirm": "Confirmă Ștergerea"
         }
+      },
+      "update_firmware": {
+        "title": "Actualizare Firmware",
+        "description": "{instructions}",
+        "data": {
+          "action": "Acțiune",
+          "firmware_url": "URL Firmware (opțional)"
+        }
+      },
+      "update_firmware_success": {
+        "title": "Actualizare Reușită",
+        "description": "{message}"
       }
     },
     "error": {
@@ -160,7 +172,10 @@
       "cannot_connect": "Salvarea configurării a eșuat",
       "invalid_address_range": "Adresa trebuie să fie între 0x20 și 0x27",
       "invalid_address_format": "Format adresă invalid. Folosește hex (0x20) sau zecimal (32)",
-      "address_in_use": "Această adresă este deja folosită de alt modul"
+      "address_in_use": "Această adresă este deja folosită de alt modul",
+      "url_required": "Te rog introdu un URL pentru firmware",
+      "download_failed": "Descărcarea firmware-ului a eșuat",
+      "update_failed": "Actualizarea firmware-ului a eșuat"
     }
   }
 }

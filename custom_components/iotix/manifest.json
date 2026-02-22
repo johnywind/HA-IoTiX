@@ -1,13 +1,13 @@
 {
   "domain": "iotix",
   "name": "IoTiX",
-  "documentation": "https://github.com/iotix/adam-homeassistant",
-  "codeowners": ["@iotix"],
+  "documentation": "https://github.com/johnywind/HA-IoTiX",
+  "codeowners": ["@johnywind"],
   "requirements": ["aiohttp>=3.8.0"],
   "zeroconf": ["_iotix-adam._tcp.local."],
   "config_flow": true,
   "iot_class": "local_polling",
   "version": "1.0.3",
-  "issue_tracker": "https://github.com/iotix/adam-homeassistant/issues",
-  "icon": "https://github.com/johnywind/HA-IoTiX/raw/main/custom_components/iotix/icon.png"
+  "issue_tracker": "https://github.com/johnywind/HA-IoTiX/issues",
+  "icon": "https://github.com/johnywind/HA-IoTiX/raw/main/icon.png"
 }

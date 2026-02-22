@@ -150,6 +150,18 @@
         "data": {
           "confirm": "Confirm Deletion"
         }
+      },
+      "update_firmware": {
+        "title": "Update Firmware",
+        "description": "{instructions}",
+        "data": {
+          "action": "Action",
+          "firmware_url": "Firmware URL (optional)"
+        }
+      },
+      "update_firmware_success": {
+        "title": "Firmware Update Success",
+        "description": "{message}"
       }
     },
     "error": {
@@ -161,7 +173,10 @@
       "cannot_connect": "Failed to save configuration",
       "invalid_address_range": "Address must be between 0x20 and 0x27",
       "invalid_address_format": "Invalid address format. Use hex (0x20) or decimal (32)",
-      "address_in_use": "This address is already used by another module"
+      "address_in_use": "This address is already used by another module",
+      "url_required": "Please enter a firmware URL",
+      "download_failed": "Failed to download firmware from URL",
+      "update_failed": "Firmware update failed"
     }
   }
 }
